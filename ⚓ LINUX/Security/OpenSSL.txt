@@ -1,0 +1,59 @@
+Создание сертификатов OpenSSL
+
+* Создайте папку для сертификатов
+-- $ mkdir /etc/.../certificate
+
+* Переходим в папку для сертификатов
+-- $ cb /etc/.../certificate
+
+
+*** Генерация SSL-сертификатов
+* Создайте самозаверяющий сертификат
+* Если вы хотите использовать SSL-сертификат для защиты службы, но вам не требуется сертификат, подписанный ЦС, действительным (и бесплатным) решением является подписание ваших собственных сертификатов. Команда создает 2048-битный закрытый ключ domain.key и самозаверяющий сертификат domain.crt
+
+-------------------------------------------------------
+openssl req \
+       -newkey rsa:2048 -nodes -keyout domain.key \
+       -x509 -days 365 -out domain.crt
+-------------------------------------------------------
+* Отвечаем на вопросы в процессе генирации
+
+Country Name (2 letter code) [AU]:
+State or Province Name (full name) [Some-State]:
+Locality Name (eg, city) []:
+Organization Name (eg, company) [Internet Widgits Pty Ltd]:
+Organizational Unit Name (eg, section) []:
+Common Name (e.g. server FQDN or YOUR name) []:
+Email Address []:
+
+* Получаем сгенерированные сертификаты в /etc/.../...
+
+
+
+*** Использование сертификата
+
+Apache
+--------------------------------------------------------
+<VirtualHost 192.168.0.1:443>     
+  ...
+  ServerName local.dev
+  SSLEngine on
+  SSLCertificateFile /path/to/localhost.crt
+  SSLCertificateKeyFile /path/to/localhost.key
+  ...
+</VirtualHost>
+--------------------------------------------------------
+
+
+NGINX
+--------------------------------------------------------
+server {
+  listen 443 ssl;
+  ssl_certificate /path/to/localhost.crt;
+  ssl_certificate_key /path/to/localhost.key;
+  ...
+}
+--------------------------------------------------------
+
+
+

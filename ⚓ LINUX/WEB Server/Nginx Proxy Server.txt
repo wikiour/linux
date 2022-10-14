@@ -1,0 +1,371 @@
+Установка и настройка Proxy Server Ubuntu Nginx
+
+------------------------------------------
+Начальная настройка сервера Ubuntu Server
+--- Что должно быть настроено:
+* Обновлены все пакеты
+* Смена порта SSH и закрытие доступа по IP
+* Обновление конфигурации IP
+* Настройка базового брандмауэра UFW
+* Настройка базового Fail2ban
+* Настройка ключей SSH
+
+---------------------------------------------------
+--- Установка Nginx -------------------------------
+---------------------------------------------------
+* Install Nginx
+--- $ sudo apt install nginx
+
+* Открываем брандмауэр для Nginx
+--- $ sudo ufw allow 'Nginx Full'     # Открыть 80 и 443 порт
+--- $ sudo ufw allow 'Nginx HTTP'     # Открыть 80
+--- $ sudo ufw allow 'Nginx HTTPS'    # Открыть 443 порт
+
+* Проверка открытых портов брандмауэра
+--- $ sudo ufw status
+
+* Проверка веб-сервера Nginx
+--- $ sudo systemctl status nginx
+
+---------------------------------------------------
+--- Настройка серверных блоков --------------------
+---------------------------------------------------
+*** Создадим временные сертификаты
+
+* Создайте папку для сертификатов
+-- $ mkdir /etc/nginx/certificate
+
+* Переходим в новый каталог
+-- $ cd /etc/nginx/certificate
+
+* Создаем сертификаты
+-------------------------------------------------------
+openssl req \
+       -newkey rsa:2048 -nodes -keyout nginx.key \
+       -x509 -out nginx.crt
+-------------------------------------------------------
+* Теперь у нас два сертификата 
+* nginx.crt и nginx.key
+
+* Конфигурация по умолчанию 
+-- $ nano /etc/nginx/sites-available/default
+-- $ cd /var/www/html  index.nginx-debian.html
+
+* Отредактируйте серверный блок по умолчанию и добавим сертификаты
+-- $ nano /etc/nginx/sites-available/default
+
+--- default --------------------------------------------
+server {
+         listen 80 default_server;
+         listen [::]:80 default_server;
+
+         # Редирект с IP на основной домен
+         return 301 https://XX.XX.XX.XX$request_uri;
+
+         listen 443 ssl default_server;
+         listen [::]:443 ssl default_server;
+
+         ssl_certificate     /etc/nginx/certificate/nginx.crt;
+         ssl_certificate_key /etc/nginx/certificate/nginx.key;
+
+          ..........
+-------------------------------------------------------
+
+* Чтобы избежать возможной проблемы с хешированием памяти раскомментируйте директиву server_names_hash_bucket_size 64;
+-- $ nano /etc/nginx/nginx.conf
+
+* Проверяем конфигурацию
+-- $ nginx -t
+
+* Перезапускаем nginx
+-- $ systemctl restart nginx
+
+
+----------------------------------------------------------------------------
+--- Конфигурация для 80 порта ----------------------------------------------
+----------------------------------------------------------------------------
+
+*** Создаем новый серверный блок 
+-- $ sudo nano /etc/nginx/sites-available/proxy
+
+Вставьте следующий блок конфигурации, который аналогичен блоку по умолчанию
+-------------------------------------------------------
+
+server {
+
+       listen 80;
+       listen [::]:80;
+
+       server_name example.com www.example.com;
+
+       # GET LATEST LIST FROM CLOUDFLARE
+       # https://www.cloudflare.com/ips/
+
+       real_ip_header   CF-Connecting-IP;
+
+       set_real_ip_from 103.21.244.0/22;
+       set_real_ip_from 103.22.200.0/22;
+       set_real_ip_from 103.31.4.0/22;
+       set_real_ip_from 104.16.0.0/13;
+       set_real_ip_from 104.24.0.0/14;
+       set_real_ip_from 108.162.192.0/18;
+       set_real_ip_from 131.0.72.0/22;
+       set_real_ip_from 141.101.64.0/18;
+       set_real_ip_from 162.158.0.0/15;
+       set_real_ip_from 172.64.0.0/13;
+       set_real_ip_from 173.245.48.0/20;
+       set_real_ip_from 188.114.96.0/20;
+       set_real_ip_from 190.93.240.0/20;
+       set_real_ip_from 197.234.240.0/22;
+       set_real_ip_from 198.41.128.0/17;
+       set_real_ip_from 2400:cb00::/32;
+       set_real_ip_from 2606:4700::/32;
+       set_real_ip_from 2803:f800::/32;
+       set_real_ip_from 2405:b500::/32;
+       set_real_ip_from 2405:8100::/32;
+       set_real_ip_from 2a06:98c0::/29;
+       set_real_ip_from 2c0f:f248::/32;
+
+  location / {
+
+    proxy_pass http://XX.XX.XX.XX:XXXX;
+    
+    # proxy_http_version  1.0;
+    # proxy_cache_bypass  $http_upgrade;
+    # proxy_buffering off;
+
+    proxy_set_header Host              $host;
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_set_header X-Forwarded-Host  $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Port  $server_port;
+
+    }
+
+    location ~ /.well-known {
+
+        allow all;
+    }
+
+
+    client_max_body_size 50m;
+}
+
+
+-------------------------------------------------------
+Далее включим конфигурацию
+-- $ ln -s /etc/nginx/sites-available/proxy /etc/nginx/sites-enabled/
+
+
+
+
+----------------------------------------------------------------------------
+--- Конфигурация для 443 порта ---------------------------------------------
+----------------------------------------------------------------------------
+
+*** Создаем новый серверный блок 
+-- $ nano /etc/nginx/sites-available/proxy-ssl
+
+Вставьте следующий блок конфигурации, который аналогичен блоку по умолчанию
+-------------------------------------------------------
+server {
+
+       listen 443 ssl;
+       listen [::]:443 ssl;
+
+       ssl_certificate     /etc/nginx/certificate/nginx.crt;
+       ssl_certificate_key /etc/nginx/certificate/nginx.key;
+
+       server_name example.com;
+
+       # GET LATEST LIST FROM CLOUDFLARE
+       # https://www.cloudflare.com/ips/
+
+       real_ip_header   CF-Connecting-IP;
+
+       set_real_ip_from 103.21.244.0/22;
+       set_real_ip_from 103.22.200.0/22;
+       set_real_ip_from 103.31.4.0/22;
+       set_real_ip_from 104.16.0.0/13;
+       set_real_ip_from 104.24.0.0/14;
+       set_real_ip_from 108.162.192.0/18;
+       set_real_ip_from 131.0.72.0/22;
+       set_real_ip_from 141.101.64.0/18;
+       set_real_ip_from 162.158.0.0/15;
+       set_real_ip_from 172.64.0.0/13;
+       set_real_ip_from 173.245.48.0/20;
+       set_real_ip_from 188.114.96.0/20;
+       set_real_ip_from 190.93.240.0/20;
+       set_real_ip_from 197.234.240.0/22;
+       set_real_ip_from 198.41.128.0/17;
+       set_real_ip_from 2400:cb00::/32;
+       set_real_ip_from 2606:4700::/32;
+       set_real_ip_from 2803:f800::/32;
+       set_real_ip_from 2405:b500::/32;
+       set_real_ip_from 2405:8100::/32;
+       set_real_ip_from 2a06:98c0::/29;
+       set_real_ip_from 2c0f:f248::/32;
+
+  location / {
+
+    proxy_pass https://XX.XX.XX.XX:XXXX;
+    
+    # proxy_http_version  1.0;
+    # proxy_cache_bypass  $http_upgrade;
+    # proxy_buffering off;
+
+    proxy_set_header Host              $host;
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_set_header X-Forwarded-Host  $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Port  $server_port;
+
+    }
+
+    location ~ /.well-known {
+        allow all;
+    }
+
+
+    client_max_body_size 50m;
+}
+
+server {
+    listen 443;
+    server_name www.example.com;
+
+        location / {
+    return 301 https://example.com$request_uri;
+        }
+}
+
+
+server {
+        listen 443;
+        server_name XX.XX.XX.XX;
+        return 301 https://example.com$request_uri;
+}
+-------------------------------------------------------
+
+Далее включим конфигурацию
+-- $ ln -s /etc/nginx/sites-available/proxy-ssl /etc/nginx/sites-enabled/
+
+
+
+
+----------------------------------------------------------------------------
+--- Конфигурация для 443 и 80 порта ----------------------------------------
+----------------------------------------------------------------------------
+
+*** Создаем новый серверный блок 
+-- $ nano /etc/nginx/sites-available/proxy-ssl
+
+Вставьте следующий блок конфигурации, который аналогичен блоку по умолчанию
+-------------------------------------------------------
+server {
+
+       listen 80;
+       listen [::]:80;
+
+       listen 443 ssl;
+       listen [::]:443 ssl;
+
+       ssl_certificate     /etc/nginx/certificate/nginx.crt;
+       ssl_certificate_key /etc/nginx/certificate/nginx.key;
+
+       server_name example.com;
+
+       # GET LATEST LIST FROM CLOUDFLARE
+       # https://www.cloudflare.com/ips/
+
+       real_ip_header   CF-Connecting-IP;
+
+       set_real_ip_from 103.21.244.0/22;
+       set_real_ip_from 103.22.200.0/22;
+       set_real_ip_from 103.31.4.0/22;
+       set_real_ip_from 104.16.0.0/13;
+       set_real_ip_from 104.24.0.0/14;
+       set_real_ip_from 108.162.192.0/18;
+       set_real_ip_from 131.0.72.0/22;
+       set_real_ip_from 141.101.64.0/18;
+       set_real_ip_from 162.158.0.0/15;
+       set_real_ip_from 172.64.0.0/13;
+       set_real_ip_from 173.245.48.0/20;
+       set_real_ip_from 188.114.96.0/20;
+       set_real_ip_from 190.93.240.0/20;
+       set_real_ip_from 197.234.240.0/22;
+       set_real_ip_from 198.41.128.0/17;
+       set_real_ip_from 2400:cb00::/32;
+       set_real_ip_from 2606:4700::/32;
+       set_real_ip_from 2803:f800::/32;
+       set_real_ip_from 2405:b500::/32;
+       set_real_ip_from 2405:8100::/32;
+       set_real_ip_from 2a06:98c0::/29;
+       set_real_ip_from 2c0f:f248::/32;
+
+  location / {
+
+    proxy_pass https://XX.XX.XX.XX:XXXX;
+    
+    # proxy_http_version  1.0;
+    # proxy_cache_bypass  $http_upgrade;
+    # proxy_buffering off;
+
+    proxy_set_header Host              $host;
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_set_header X-Forwarded-Host  $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Port  $server_port;
+
+    }
+
+    location ~ /.well-known {
+        allow all;
+    }
+
+
+    client_max_body_size 50m;
+}
+
+
+server {
+    listen 443;
+    server_name www.example.com;
+
+        location / {
+    return 301 https://example.com$request_uri;
+        }
+}
+
+
+server {
+        listen 443;
+        server_name XX.XX.XX.XX;
+        return 301 https://example.com$request_uri;
+}
+-------------------------------------------------------
+
+Далее включим конфигурацию
+-- $ ln -s /etc/nginx/sites-available/proxy /etc/nginx/sites-enabled/
+
+
+* Проверяем конфигурацию
+-- $ sudo nginx -t
+
+* Перезапускаем nginx
+-- $ sudo systemctl restart nginx
+
+
+-------------------------------------------------------
+
+- Настройте Fail2Ban для Nginx
+
+- Получение реальные сертификата SSL Let’s Encrypt
+
+-------------------------------------------------------
+
+
+

@@ -1,0 +1,268 @@
+---------------------------------------------------
+--- Установка Nginx
+---------------------------------------------------
+* Install
+--- $ sudo apt install nginx
+
+* Настройка брандмауэра
+--- $ sudo ufw allow 'Nginx Full'
+--- $ sudo ufw allow 'Nginx HTTP'
+--- $ sudo ufw allow 'Nginx HTTPS'
+
+* Настройка брандмауэра
+--- $ sudo ufw status
+
+* Проверка вашего веб-сервера
+--- $ sudo systemctl status nginx
+
+---------------------------------------------------
+
+* Содержание
+/var/www/html: Фактический веб-контент, который по умолчанию состоит только из страницы Nginx по умолчанию, которую вы видели ранее, обслуживается из /var/www/htmlкаталога. Это можно изменить, изменив файлы конфигурации Nginx.
+
+* Конфигурация сервера
+/etc/nginx: каталог конфигурации Nginx. Все файлы конфигурации Nginx находятся здесь.
+
+/etc/nginx/nginx.conf: основной файл конфигурации Nginx. Это можно изменить, чтобы внести изменения в глобальную конфигурацию Nginx.
+
+/etc/nginx/sites-available/: каталог, в котором могут храниться серверные блоки для каждого сайта. Nginx не будет использовать файлы конфигурации, найденные в этом каталоге, если они не связаны с sites-enabledкаталогом. Как правило, вся конфигурация серверного блока выполняется в этом каталоге, а затем активируется путем ссылки на другой каталог.
+
+/etc/nginx/sites-enabled/: Каталог, в котором хранятся включенные серверные блоки для каждого сайта. Как правило, они создаются путем ссылки на файлы конфигурации, находящиеся в sites-availableкаталоге.
+
+/etc/nginx/snippets: этот каталог содержит фрагменты конфигурации, которые можно включить в другое место в конфигурации Nginx. Потенциально повторяемые сегменты конфигурации являются хорошими кандидатами на рефакторинг во фрагменты.
+
+* Журналы сервера
+/var/log/nginx/access.log: каждый запрос к вашему веб-серверу записывается в этот файл журнала, если Nginx не настроен иначе.
+
+/var/log/nginx/error.log: любые ошибки Nginx будут записываться в этот журнал.
+
+
+* Пути к журналам настраиваются
+-- $ sudo nano /etc/nginx/nginx.conf
+
+---------------------------------------------------
+---------------------------------------------------
+
+* Создадим страницы index.html и 404.html
+
+-- $ cd /var/www/html
+
+
+-- $ sudo nano index.html
+
+<p><center>Hello</p>
+<p><center>This site is under construction or temporarily unavailable</center></p>
+<p><center>Please come back later</center></p>
+
+-- $ sudo nano 404.html
+
+<p><center>ERROR 404</center></p>
+<p><center>Hello</center></p>
+<p><center>This site is under construction or temporarily unavailable</center></p>
+<p><center>Please come back later</center></p>
+
+---------------------------------------------------
+--- Настройка серверных блоков
+---------------------------------------------------
+*** Создадим временные самозаверяющиеся сертификаты
+
+* Создайте папку для сертификатов
+-- $ sudo mkdir /etc/nginx/certificate
+* Переходим в новый каталог
+-- $ cd /etc/nginx/certificate
+
+* Создаем сертификаты
+-------------------------------------------------------
+openssl req \
+       -newkey rsa:2048 -nodes -keyout nginx.key \
+       -x509 -out nginx.crt
+-------------------------------------------------------
+* Теперь у нас два сертификата 
+* nginx.crt и nginx.key
+
+* Отредактируйте серверный блок по умолчанию
+* Добавте сертификаты
+-- $ sudo nano /etc/nginx/sites-available/default
+
+--- Пример --------------------------------------------
+server {
+
+         listen 80 default_server;
+         listen [::]:80 default_server;
+
+         listen 443 ssl default_server;
+         listen [::]:443 ssl default_server;
+
+         ssl_certificate /etc/nginx/certificate/nginx.crt;
+         ssl_certificate_key /etc/nginx/certificate/nginx.key;
+
+          ..........
+-------------------------------------------------------
+
+* Чтобы избежать возможной проблемы с хэшированием памяти раскоментируйте директиву server_names_hash_bucket_size 
+-- $ sudo nano /etc/nginx/nginx.conf
+
+* Проверяем конфигурацию
+-- $ sudo nginx -t
+
+* Перезапускаем nginx
+-- $ sudo systemctl restart nginx
+
+
+Блок конфигурации по умолчанию
+-- $ sudo nano /etc/nginx/sites-available/default
+-------------------------------------------------------
+server {
+
+       listen 80;
+       listen [::]:80;
+
+       listen 443 ssl;
+       listen [::]:443 ssl;
+
+       ssl_certificate     /etc/nginx/certificate/nginx.crt;
+       ssl_certificate_key /etc/nginx/certificate/nginx.key;
+
+       root /var/www/html;
+
+       # Add index.php to the list if you are using PHP
+       index index.html;
+
+       server_name _;
+
+       # GET LATEST LIST FROM CLOUDFLARE
+       # https://www.cloudflare.com/ips/
+
+       real_ip_header   CF-Connecting-IP;
+
+       set_real_ip_from 103.21.244.0/22;
+       set_real_ip_from 103.22.200.0/22;
+       set_real_ip_from 103.31.4.0/22;
+       set_real_ip_from 104.16.0.0/13;
+       set_real_ip_from 104.24.0.0/14;
+       set_real_ip_from 108.162.192.0/18;
+       set_real_ip_from 131.0.72.0/22;
+       set_real_ip_from 141.101.64.0/18;
+       set_real_ip_from 162.158.0.0/15;
+       set_real_ip_from 172.64.0.0/13;
+       set_real_ip_from 173.245.48.0/20;
+       set_real_ip_from 188.114.96.0/20;
+       set_real_ip_from 190.93.240.0/20;
+       set_real_ip_from 197.234.240.0/22;
+       set_real_ip_from 198.41.128.0/17;
+       set_real_ip_from 2400:cb00::/32;
+       set_real_ip_from 2606:4700::/32;
+       set_real_ip_from 2803:f800::/32;
+       set_real_ip_from 2405:b500::/32;
+       set_real_ip_from 2405:8100::/32;
+       set_real_ip_from 2a06:98c0::/29;
+       set_real_ip_from 2c0f:f248::/32;
+
+
+   location / {
+   
+       try_files $uri $uri/ =404;
+       error_page 404 404.html;
+     # error_page 404 https://example.com/404.html;
+
+    }
+
+    client_max_body_size 50m;
+}
+
+
+server {
+
+        listen 443;
+        server_name www.example.com;
+
+        location / {
+
+        return 301 https://example.com$request_uri;
+
+        }
+}
+
+
+server {
+
+        listen 443;
+        server_name IP.XX.XX.XX;
+        return 301 https://example.com$request_uri;
+}
+
+-------------------------------------------------------
+
+* Проверяем конфигурацию
+-- $ sudo nginx -t
+
+* Перезапускаем nginx
+-- $ sudo systemctl restart nginx
+
+
+
+---------------------------------------------------------
+Увеличить загружаемый файл
+
+-- $ sudo nano /etc/nginx/nginx.conf и в конфиг файл сайта
+
+/etc/nginx/sites-available/
+ 
+Добавляем client_max_body_size 15000m;
+
+        # Максимальный файл для загрузки
+        client_max_body_size 15000m;
+
+
+http {
+...
+client_max_body_size 1000m;
+...
+}
+
+
+server {
+...
+client_max_body_size 1000m;
+...
+}
+
+
+!!! cloudflare ограничение проксирования до 100M !!!!
+
+
+---------------------------------------------------------
+
+Nginx загрузка больших файлов  /etc/nginx/nginx.conf 
+
+sudo nano /etc/nginx/sites-available/yourdomain.com
+
+500 секунд нужно понимать
+
+location / {
+...
+  client_body_in_file_only   on;
+  client_body_buffer_size    1M;
+  client_max_body_size       80G;
+
+proxy_connect_timeout 500;
+proxy_send_timeout 500;
+proxy_read_timeout 500;
+
+...
+}
+
+
+
+
+---------------------------------------------------------
+
+* Удалить nginx
+
+-- $ sudo apt-get remove nginx*
+
+-- $ sudo apt-get purge nginx*
+
+
+
+

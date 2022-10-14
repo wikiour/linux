@@ -1,0 +1,170 @@
+WEB Server Apache
+
+* Проверим конфигурацию Apache
+-- $ apache2ctl configtest
+
+-------------------------------------------------------------------
+--- Установка Apache -----------------------------------------------
+-------------------------------------------------------------------
+*** Установим Apache 
+--- $ sudo apt install apache2
+
+* Включить в автозагрузку при рестарте системы
+--- $ sudo systemctl enable apache2
+
+* Открытие портов UFW для Apache
+--- $ sudo ufw allow "Apache Full"        # открыть все порты
+--- $ sudo ufw allow "Apache"             # открыть 80 порт
+--- $ sudo ufw allow "Apache Secure"      # открыть 443 порт
+
+* Проверяем статус UFW
+--- $ sudo ufw status
+
+Теперь у нас по http://example.com страница Apache2 Ubuntu Default Page
+
+*** Создадим временные самозаверяющиеся сертификаты
+
+* Создайте папку для сертификатов
+-- $ mkdir /etc/apache2/certificate
+* Переходим в новый каталог
+-- $ cd /etc/apache2/certificate
+
+* Создаем сертификаты
+-------------------------------------------------------
+openssl req \
+       -newkey rsa:2048 -nodes -keyout apache2.key \
+       -x509 -out apache2.crt
+-------------------------------------------------------
+* Теперь у нас два сертификата 
+* apache2.crt и apache2.key
+
+* Отредактируйте серверный блок по умолчанию
+* Добавьте сертификаты 
+-- $ nano /etc/apache2/sites-available/default-ssl.conf
+
+-------------------------------------------------------
+   ...........
+
+   SSLCertificateFile /etc/apache2/certificate/apache2.crt
+   SSLCertificateKeyFile /etc/apache2/certificate/apache2.key
+
+   ...........
+
+-------------------------------------------------------
+
+* Проверим конфигурацию Apache
+-- $ apache2ctl configtest
+
+* Необходимо активировать mod_ssl:
+-- $  a2enmod ssl
+
+* Затем включить настройки HTTPS сайта по умолчанию:
+-- $ sudo a2ensite default-ssl
+
+* Перезапустим Apache
+-- $ sudo systemctl reload apache2
+
+Теперь у нас по http://example.com и https://example.com страница Apache2 Ubuntu Default Page
+
+*** Перенаправление HTTP запросов на HTTPS
+* Сделаем это с помощью mod_alias. Если он не включён - включаем:
+-- $ sudo a2enmod alias
+
+* Перезапустим Apache
+-- $ sudo systemctl reload apache2
+
+Изменяем файл /etc/apache2/sites-enabled/000-default.conf отвечающий за виртуальный хост по умолчанию для HTTP запросов. В этот файл добавляем директиву.
+-------------------------------------------------------
+<VirtualHost *:80>
+
+        Redirect / https://example.com/
+
+</VirtualHost>
+-------------------------------------------------------
+При этом все настройки директорий можно удалить, поскольку по HTTP на ваши сайты всё равно будет не попасть.
+
+* Проверим конфигурацию Apache
+-- $ sudo apache2ctl configtest
+
+* Перезапустим Apache
+-- $ sudo systemctl reload apache2
+
+---------------------------------------------------------------------
+---------------------------------------------------------------------
+
+
+
+*** Команды  Apache
+
+* Проверить версию Apache
+--- $ sudo apache2 -v
+
+* Проверить статус Apache
+--- $ sudo systemctl status apache2
+
+* Посмотрите пути к файлам apache2
+--- $ sudo whereis apache2
+
+* Файлы apache2 по умолчанию
+--- /usr/sbin/apache2 
+--- /usr/lib/apache2 
+--- /etc/apache2 
+--- /usr/share/apache2 
+--- /usr/share/man/man8/apache2.8.gz
+
+
+
+-----------------------------------------------------------------------
+-----------------------------------------------------------------------
+*** Схема конфигурации веб-сервера Apache2
+
+/etc/apache2/
+|-- apache2.conf
+|       |--  ports.conf
+|-- mods-enabled
+|       |-- *.load
+|       |-- *.conf
+|-- conf-enabled
+|       |-- *.conf
+|-- sites-enabled
+|       |-- *.conf
+         
+* apache2.conf основной файл конфигурации. Он объединяет части включая все оставшиеся файлы конфигурации при запуске веб-сервера.
+
+* ports.conf всегда подключается из основного файла конфигурации. Он используется для определения портов прослушивания для входящих соединений этот файл можно настроить в любое время.
+
+Файлы конфигурации в каталогах mods-enabled/ conf-enabled/ site-enabled/ содержат определенные фрагменты конфигурации которые управляют модулями и фрагментами глобальной конфигурации или конфигурациями виртуального хоста Они активируются путем символической ссылки на доступные файлы конфигурации из их соответствующих *-available/ аналогов Этим можно управлять с помощью помощников a2enmod a2dismod a2ensite a2dissite a2enconf a2disconf 
+
+Бинарный файл называется apache2 Из-за использования переменных среды в конфигурации по умолчанию apache2 необходимо запускать/stopped с помощью /etc/init.d/apache2 или apache2ctl Прямой вызов /usr/bin/apache2 не будет работать с конфигурацией по умолчанию
+
+* Корни документа
+По умолчанию Ubuntu не разрешает доступ через веб-браузер к каким- либо файлам, кроме тех, которые расположены в каталогах /var/www и public_html (если они включены) и /usr/share (для веб-приложений) Если ваш сайт использует корневой каталог веб-документов, расположенный в другом месте (например в /srv) вам может потребоваться внести корневой каталог вашего документа в белый список в /etc/apache2/apache2.conf Корень документа Ubuntu по умолчанию /var/www/html Вы можете создавать собственные виртуальные хосты в каталоге /var/www
+
+
+
+
+////////////////////////////////////////////////////////////////////////
+
+* Удалите Apache2
+--- $ sudo systemctl disable apache2 && sudo systemctl stop apache2
+--- $ sudo apt-get purge apache2 apache2-utils apache2.2-bin apache2-common
+--- $ sudo apt-get autoremove
+
+* Посмотрите пути к файлам apache2
+--- $ sudo whereis apache2
+
+* Удалите файлы apache2
+--- $ sudo rm -rf /usr/sbin/apache2 
+--- $ sudo rm -rf /usr/lib/apache2 
+--- $ sudo rm -rf /etc/apache2 
+--- $ sudo rm -rf /usr/share/apache2 
+--- $ sudo rm -rf /usr/share/man/man8/apache2.8.gz
+
+* Проверьте удаление
+--- $ sudo which apache2                       # должен возвращать пустую строку
+--- $ sudo service apache2 start               # должен вернуть apache2: нераспознанная служба
+
+* Перезагрузите сервер
+--- $ reboot
+
+В каталоге /var/www/html остаются файлы по умолчанию ! их лучше изменить или удалить.

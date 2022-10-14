@@ -1,0 +1,111 @@
+Оптимальная настройка Nginx
+
+--- $ sudo nano /etc/nginx/nginx.conf
+
+-----------------------------------------
+* Обработка соединений
+
+worker_processes auto;
+# Определяет количество рабочих процессов. Его лучше устанавливать в auto в новых версиях.
+
+worker_connections 1024;
+# Устанавливает максимальное количество соединений одного рабочего процесса. Следует выбирать значения от 1024 до 4096.
+
+-----------------------------------------
+* Обработка запросов
+
+multi_accept on;
+# Будет принимать максимально возможное количество соединений
+sendfile on;
+# Метод отправки данных sendfile более эффективен, чем стандартный метод read+write
+tcp_nodelay on;
+tcp_nopush on;
+# Будет отправлять заголовки и и начало файла в одном пакете
+
+-----------------------------------------
+* Информация о файлах
+open_file_cache max=200000 inactive=20s;
+# Определяет максимальное количество файлов, информация о которых будет содержаться в кеше
+open_file_cache_valid 30s;
+# Определяет через какое время информация будет удалена из кеша
+open_file_cache_min_uses 2;
+# Будет кешировать информацию о тех файлах, которые были использованы хотя бы 2 раза
+open_file_cache_errors on;
+# Будет кешировать информацию об отсутствующих файлах
+
+-----------------------------------------
+* Обработка клиентов
+keepalive_timeout 30;
+# Будет ждать 30 секунд перед закрытием keepalive соединения
+keepalive_requests 100;
+# Максимальное количество keepalive запросов от одного клиента
+
+reset_timedout_connection on;
+# Если клиент перестал читать отвечать, Nginx будет сбрасывать соединение с ним
+client_body_timeout 10;
+# Будет ждать 10 секунд тело запроса от клиента, после чего сбросит соединение
+send_timeout 2;
+# Если клиент прекратит чтение ответа, Nginx подождет 2 секунды и сбросит соединение
+
+client_max_body_size 1m;
+# В этом случае сервер не будет принимать запросы размером более 1Мб
+
+
+       gzip on;
+
+        # gzip_vary on;
+        # gzip_proxied any;
+        # gzip_comp_level 6;
+        # gzip_buffers 16 8k;
+        # gzip_http_version 1.1;
+        # gzip_types text/plain text/css application/json application/javascript text/xml applicati>
+
+
+
+-----------------------------------------
+http {
+        ..............................
+
+        ##
+        # Базовые настройки
+        ##
+
+        # Обработка запросов
+        sendfile on;
+        tcp_nopush on;
+        tcp_nodelay on;
+
+        # Обработка файлов
+        keepalive_timeout 120;
+        keepalive_requests 2000;
+        reset_timedout_connection on;
+        types_hash_max_size 2048;
+        client_max_body_size 5G;
+
+        ..............................
+
+       gzip on;     https://nginx.org/ru/docs/http/ngx_http_gzip_module.html
+
+        gzip_vary on;
+        gzip_proxied any;
+        gzip_min_length 20;
+        gzip_comp_level 6;
+        gzip_buffers 16 8k;
+        gzip_http_version 1.1;
+        gzip_types text/plain text/css application/json application/javascript text/xml applicati>
+
+        # Кеширование файлов
+        open_file_cache max=200000 inactive=20s; 
+        open_file_cache_valid 30s; 
+        open_file_cache_min_uses 2;
+        open_file_cache_errors on;
+
+
+
+
+* Проверяем конфигурацию
+-- $ sudo nginx -t
+
+* Перезапускаем nginx
+-- $ sudo systemctl restart nginx
+

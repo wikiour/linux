@@ -1,0 +1,109 @@
+Как подключить Telegram к Fail2Ban
+
+*** Оповещения через Telegram
+* Включить Fail2ban Telegram Notifications
+
+* Создайте файл telegram.conf в /etc/fail2ban/action.d/
+--- $ nano /etc/fail2ban/action.d/telegram.conf
+
+--- telegram.conf ----------------------------------------------------------------------
+----------------------------------------------------------------------------------------
+[Definition]
+
+actionstart = /etc/fail2ban/scripts/telegram.sh -a start 
+actionstop  = /etc/fail2ban/scripts/telegram.sh -a stop
+actioncheck = 
+actionban   = /etc/fail2ban/scripts/telegram.sh -n <name> -b <ip>
+actionunban = /etc/fail2ban/scripts/telegram.sh -n <name> -u <ip>
+
+[Init]
+
+init = 123
+----------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------
+
+* Создайте каталог scripts
+--- $ mkdir /etc/fail2ban/scripts
+
+* Создайте файл telegram.sh в /etc/fail2ban/scripts/
+--- $ nano /etc/fail2ban/scripts/telegram.sh
+
+--- telegram.sh ------------------------------------------------------------------------
+----------------------------------------------------------------------------------------
+#!/bin/bash
+
+# Telegram BOT Token 
+telegramBotToken='XXXXXXXXXXXXXXXXXXXXXXXXXXXX'
+
+# Telegram Chat ID
+telegramChatID='XXXXXXXXXX'
+
+function talkToBot() {
+	message=$1
+	curl -s -X POST https://api.telegram.org/bot${telegramBotToken}/sendMessage -d text="${message}" -d chat_id=${telegramChatID} > /dev/null 2>&1
+}
+
+if [ $# -eq 0 ]; then
+	echo "Usage $0 -a ( start || stop ) || -b \$IP || -u \$IP"
+	exit 1;
+fi
+
+while getopts "a:n:b:u:" opt; do
+	case "$opt" in
+		a)
+			action=$OPTARG
+		;;
+		n)
+			jail_name=$OPTARG
+		;;
+		b)
+			ban=y
+			ip_add_ban=$OPTARG
+		;;
+		u)
+			unban=y
+			ip_add_unban=$OPTARG
+		;;
+		\?) 
+			echo "SERVER-NAME Invalid option. -$OPTARG" 
+			exit 1
+		;;
+	esac
+done
+
+if [[ ! -z ${action} ]]; then
+	case "${action}" in
+		start)
+			talkToBot "Fail2ban SERVER-NAME start"
+		;;
+		stop)
+			talkToBot "Fail2ban SERVER-NAME stop"
+		;;
+		*)
+			echo "SERVER-NAME Incorrect option"
+			exit 1;
+		;;
+	esac
+elif [[ ${ban} == "y" ]]; then
+	talkToBot "[${jail_name}] The IP: ${ip_add_ban} BAN SERVER-NAME"
+	exit 0;
+elif [[ ${unban} == "y" ]]; then
+	talkToBot "[${jail_name}] The IP: ${ip_add_unban} NO-BAN SERVER-NAME"
+	exit 0;
+else
+	info
+fi
+----------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------
+
+* Сделайте исполняемым файл telegram.sh
+--- $ chmod +x /etc/fail2ban/scripts/telegram.sh
+
+
+* Проверить состояние fail2ban
+--- $ systemctl status fail2ban
+* Перезапустить сервис
+--- $ service fail2ban restart
+* Получение информации о включенных фильтрах
+--- $ fail2ban-client status
+

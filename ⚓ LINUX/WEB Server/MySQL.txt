@@ -1,0 +1,112 @@
+MySQL
+
+* Версия mysql
+--- $ sudo mysql --version
+
+-----------------------------------------------------------------------
+--- Установка MySQL ---------------------------------------------------
+-----------------------------------------------------------------------
+*** Установим MySQL с помощью apt
+--- $ sudo apt install mysql-server
+
+*** Меняем метод аутентификации
+* Войдите в MySQl
+--- $ sudo mysql
+* Чтобы настроить для учетной записи root аутентификацию с помощью пароля, выполните следующую команду 
+--- $ mysql> ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY 'YOR-PASSWORD';
+* Перезагрузить сервер
+--- $ mysql> FLUSH PRIVILEGES;
+* Проверьте методы аутентификации.
+--- $ mysql> SELECT user,authentication_string,plugin,host FROM mysql.user;
+* Выходим из MySQL и проверяем вход под root
+--- $ mysql> exit
+
+
+* Рекомендуется запустить скрипт безопасности, предустановленный в MySQL
+* Скрипт предложит настроить плагин VALIDATE PASSWORD PLUGIN
+--- $ sudo mysql_secure_installation
+--- Please enter 0 = LOW, 1 = MEDIUM and 2 = STRONG: 2 ( 1 слабый пароль )
+--- Установка нового пароля root при необходимости
+--- Для всех остальных вопросов нужно выбирать Y
+
+* Проверка входа в SQL 
+--- $ sudo mysql -u root -p
+* Выход из SQL
+--- $ sudomysql> exit
+
+-----------------------------------------------------------------------
+-----------------------------------------------------------------------
+
+///////////////////////////////////////////
+////// Создаем базу и пользователя ////////
+///////////////////////////////////////////
+
+--- Входим в SQL 
+- $ mysql -u root -p
+--- Создаем базу данных 
+- $mysql> create database YOR-NEW-DB;   
+* Вариант с указанием кодировки $mysql> create database YOR-NEW-DB character set utf8mb4 collate utf8mb4_bin;
+- Создаем пользователя и пароль 
+--- $ sudomysql> create user NEW-USER-NAME@localhost identified by 'YOR-PASSWORD-DB';
+- Даем права 
+--- $ sudomysql> grant all privileges on YOR-NEW-DB.* to NEW-USER-NAME@localhost;
+- Выходим 
+--- $ sudomysql> exit
+
+# Проверяем подключение пользователя
+--- $ sudo mysql -u NEW-USER-NAME -p
+
+///////////////////////////////////////////
+/////////// Работа с MySQL ////////////////
+///////////////////////////////////////////
+
+* Вывод всех баз данных
+- Вход с правами root 
+--- $ sudo mysql -u root -p
+--- $ mysql> SHOW DATABASES;
+
+* Импорт базы данных
+--- $ sudo zcat /путь/к/архиву/базы/MYBAYSSQL.sql.gz | mysql -u YOR-DB -p YOR-USER
+
+
+
+
+* Список пользователей всех пользователей
+--- $ mysql> SELECT User, Host FROM mysql.user;
+
+* Список пользователей БД
+--- $ mysql> SHOW GRANTS FOR 'bloguser'@'localhost';
+
+bloguser  — имя пользователя MySQL/MariaDB
+localhost — имя хоста, с которого разрешено подключаться этому пользователю
+mywpblog  — имя базы данных
+
+*  Удаление пользователя
+--- $ mysql> DROP USER 'user'@'localhost';
+
+
+
+* Список всех баз данных MySQL
+--- $ mysql> SHOW DATABASES;
+
+* Удалить базу данных в MySQL
+--- $ mysql> DROP DATABASE example_prod;
+
+
+-----------------------------------------------------------
+-----------------------------------------------------------
+
+* Переходим на ROOT
+
+* Экспорт БД через SSH
+--- $ mysqldump -u USERNAME -p PASSWORD DATABASE > db_file_name.sql
+
+* Экспорт БД через SSH в файл со сжатием
+--- $ mysqldump -u USERNAME -p PASSWORD DATABASE | gzip > db_file_name.sql.gz
+
+* Импорт БД через SSH из файла
+--- $ mysql -u USERNAME -p PASSWORD DATABASE < db_file_name.sql
+
+* Импорт БД через SSH из сжатого файла
+--- $ gzip -dc < db_file_name.sql.gz | mysql -u USERNAME -p PASSWORD DATABASE
+

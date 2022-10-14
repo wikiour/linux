@@ -1,0 +1,179 @@
+
+Fail2ban и Cloudflare Настройка Nginx и Apache
+
+----------------------------------------
+--- nginx ------------------------------
+----------------------------------------
+
+В конфигурационный файл добавляем ip адреса cloudflare
+--- $ cd /etc/nginx/sites-available/
+
+------------------------------------------------
+http {
+       ......................
+
+       # GET LATEST LIST FROM CLOUDFLARE
+       # https://www.cloudflare.com/ips/
+
+       real_ip_header   CF-Connecting-IP;
+
+       set_real_ip_from 103.21.244.0/22;
+       set_real_ip_from 103.22.200.0/22;
+       set_real_ip_from 103.31.4.0/22;
+       set_real_ip_from 104.16.0.0/13;
+       set_real_ip_from 104.24.0.0/14;
+       set_real_ip_from 108.162.192.0/18;
+       set_real_ip_from 131.0.72.0/22;
+       set_real_ip_from 141.101.64.0/18;
+       set_real_ip_from 162.158.0.0/15;
+       set_real_ip_from 172.64.0.0/13;
+       set_real_ip_from 173.245.48.0/20;
+       set_real_ip_from 188.114.96.0/20;
+       set_real_ip_from 190.93.240.0/20;
+       set_real_ip_from 197.234.240.0/22;
+       set_real_ip_from 198.41.128.0/17;
+       set_real_ip_from 2400:cb00::/32;
+       set_real_ip_from 2606:4700::/32;
+       set_real_ip_from 2803:f800::/32;
+       set_real_ip_from 2405:b500::/32;
+       set_real_ip_from 2405:8100::/32;
+       set_real_ip_from 2a06:98c0::/29;
+       set_real_ip_from 2c0f:f248::/32;
+
+         ......................
+
+------------------------------------------------
+* Проверяем конфигурацию
+--- $ sudo nginx -t
+
+* Перезапускаем nginx
+--- $ sudo systemctl restart nginx
+
+* Далее идем в конфигурационный файл и добавляем токен и почту
+--- $ sudo nano /etc/fail2ban/action.d/cloudflare.conf
+
+--- cloudflare.conf ----------------------------
+------------------------------------------------
+cftoken = XXXXXXXXXXXXXXXXXXXXXXX
+
+cfuser  = mail@examle.com
+------------------------------------------------
+------------------------------------------------
+
+* Редактируем jail.local
+--- $ sudo nano /etc/fail2ban/jail.local
+
+--- jail.local ---------------------------------
+------------------------------------------------
+action      = cloudflare 
+              telegram
+
+------------------------------------------------
+------------------------------------------------
+
+* Проверить состояние fail2ban
+--- $ sudo systemctl status fail2ban
+
+* Перезапустить сервис
+--- $ sudo service fail2ban restart
+
+* Получение информации о включенных фильтрах
+--- $ sudo fail2ban-client status
+
+Всех забаненных по нашему вновь созданному файлу можем видеть по команде fail2ban-client status http-ddos а также в панельке cloudflare во вкладке firewall 
+
+
+
+----------------------------------------
+--- Apache -----------------------------
+----------------------------------------
+
+* Включите мод получения реальных ip
+--- $ sudo a2enmod remoteip
+
+В конфигурационный файл добавляем ip адреса cloudflare
+
+------------------------------------------------
+------------------------------------------------
+<VirtualHost *:443>
+
+    ...............................
+
+    # GET LATEST LIST FROM CLOUDFLARE
+    # https://www.cloudflare.com/ips/
+
+    RemoteIPHeader CF-Connecting-IP
+
+    RemoteIPTrustedProxy 103.21.244.0/22
+    RemoteIPTrustedProxy 103.22.200.0/22
+    RemoteIPTrustedProxy 103.31.4.0/22
+    RemoteIPTrustedProxy 104.16.0.0/13
+    RemoteIPTrustedProxy 104.24.0.0/14
+    RemoteIPTrustedProxy 108.162.192.0/18
+    RemoteIPTrustedProxy 131.0.72.0/22
+    RemoteIPTrustedProxy 141.101.64.0/18
+    RemoteIPTrustedProxy 162.158.0.0/15
+    RemoteIPTrustedProxy 172.64.0.0/13
+    RemoteIPTrustedProxy 173.245.48.0/20
+    RemoteIPTrustedProxy 188.114.96.0/20
+    RemoteIPTrustedProxy 190.93.240.0/20
+    RemoteIPTrustedProxy 197.234.240.0/22
+    RemoteIPTrustedProxy 198.41.128.0/17
+    RemoteIPTrustedProxy 2400:cb00::/32
+    RemoteIPTrustedProxy 2606:4700::/32
+    RemoteIPTrustedProxy 2803:f800::/32
+    RemoteIPTrustedProxy 2405:b500::/32
+    RemoteIPTrustedProxy 2405:8100::/32
+    RemoteIPTrustedProxy 2a06:98c0::/29
+    RemoteIPTrustedProxy 2c0f:f248::/32
+
+
+    SSLEngine on ..................
+    ...............................
+
+</VirtualHost>
+------------------------------------------------
+------------------------------------------------
+* Чтобы убедиться в отсутствии ошибок синтаксиса в вашем файле конфигурации
+--- $ sudo apache2ctl configtest
+
+* В заключение перезагрузите Apache, чтобы эти изменения вступили в силу
+--- $ sudo systemctl reload apache2
+
+
+
+* Далее идем в конфигурационный файл и добавляем токен и почту
+-- $ sudo nano /etc/fail2ban/action.d/cloudflare.conf
+
+--- cloudflare.conf ----------------------------
+------------------------------------------------
+cftoken = XXXXXXXXXXXXXXXXXXXXXXX
+
+cfuser  = mail@examle.com
+------------------------------------------------
+------------------------------------------------
+
+
+* Добавляем в jail.local
+--- $ sudo nano /etc/fail2ban/jail.local
+
+--- jail.local ---------------------------------
+------------------------------------------------
+action      = cloudflare 
+              telegram
+
+------------------------------------------------
+------------------------------------------------
+
+
+* Проверить состояние fail2ban
+--- $ sudo systemctl status fail2ban
+
+* Перезапустить сервис
+--- $ sudo service fail2ban restart
+
+* Получение информации о включенных джейлах
+--- $ sudo fail2ban-client status
+
+Всех забаненных по нашему вновь созданному файлу можем видеть по команде fail2ban-client status http-ddos а также в панельке cloudflare во вкладке firewall 
+

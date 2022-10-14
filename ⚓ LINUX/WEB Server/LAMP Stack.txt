@@ -1,0 +1,443 @@
+Установка LAMP Ubuntu
+
+Steak = Ubuntu 20.04 + Apache + MySql
+Security = UFI + Fail2Ban
+
+Начальная настройка сервера Ubuntu Server
+--- Что должно быть настроено:
+* Обновлены все пакеты
+* Смена порта SSH и закрытие доступа по IP
+* Обновление конфигурации IP
+* Настройка базового брандмауэра UFW
+* Настройка базового Fail2ban
+* Настройка ключей SSH
+
+
+
+*** Apache *********************************************************
+-------------------------------------------------------------------
+--- Установка Apache -----------------------------------------------
+-------------------------------------------------------------------
+*** Установим Apache 
+--- $ sudo apt install apache2
+
+* Включить в автозагрузку при рестарте системы
+--- $ sudo systemctl enable apache2
+
+* Открытие портов UFW для Apache
+--- $ sudo ufw allow "Apache Full"        # открыть все порты
+--- $ sudo ufw allow "Apache"             # открыть 80 порт
+--- $ sudo ufw allow "Apache Secure"      # открыть 443 порт
+
+* Проверяем статус UFW
+--- $ sudo ufw status
+
+Теперь у нас по http://example.com страница Apache2 Ubuntu Default Page
+
+*** Создадим временные самозаверяющиеся сертификаты
+
+* Создайте папку для сертификатов
+-- $ sudo mkdir /etc/apache2/certificate
+
+* Переходим в новый каталог
+-- $ cd /etc/apache2/certificate
+
+* Создаем сертификаты
+-------------------------------------------------------
+openssl req \
+       -newkey rsa:2048 -nodes -keyout apache2.key \
+       -x509 -out apache2.crt
+-------------------------------------------------------
+* Теперь у нас два сертификата 
+* apache2.crt и apache2.key
+
+* Отредактируйте серверный блок по умолчанию
+* Добавте сертификаты 
+-- $ sudo nano /etc/apache2/sites-available/default-ssl.conf
+
+-------------------------------------------------------
+   ...........
+
+   SSLCertificateFile    /etc/apache2/certificate/apache2.crt
+   SSLCertificateKeyFile /etc/apache2/certificate/apache2.key
+
+   ...........
+
+-------------------------------------------------------
+
+* Проверим конфигурацию Apache
+-- $ sudo apache2ctl configtest
+
+* Необходимо активировать mod_ssl:
+-- $ sudo a2enmod ssl
+
+* Затем включить настройки HTTPS сайта по умолчанию:
+-- $ sudo a2ensite default-ssl
+
+* Перезапустим Apache
+-- $ sudo systemctl reload apache2
+
+Теперь у нас по http://example.com и https://example.com страница Apache2 Ubuntu Default Page
+
+*** Перенаправление HTTP запросов на HTTPS
+* Сделаем это с помощью mod_alias. Если он не включён - включаем:
+-- $ sudo a2enmod alias
+
+* Активация модуля перезаписи mod_rewrite для использования постоянных ссылок
+--- $ sudo a2enmod rewrite
+
+* Перезапустим Apache
+-- $ sudo systemctl reload apache2
+
+Изменяем файл sudo nano /etc/apache2/sites-available/000-default.conf отвечающий за виртуальный хост по умолчанию для HTTP запросов. В этот файл добавляем директиву.
+-------------------------------------------------------
+<VirtualHost *:80>
+
+        Redirect / https://example.com$request_uri
+
+</VirtualHost>
+-------------------------------------------------------
+При этом все настройки директорий можно удалить, поскольку по HTTP на ваши сайты всё равно будет не попасть.
+
+
+* Проверим конфигурацию Apache
+-- $ sudo apache2ctl configtest
+
+* Перезапустим Apache
+-- $ sudo systemctl reload apache2
+
+---------------------------------------------------------------------
+---------------------------------------------------------------------
+
+---------------------------------------------------
+
+* Создадим страницы index.html и 404.html
+
+-- $ cd /var/www/html
+
+
+-- $ sudo nano index.html
+
+<p><center>Hello</p>
+<p><center>This site is under construction or temporarily unavailable</center></p>
+<p><center>Please come back later</center></p>
+
+-- $ sudo nano 404.html
+
+<p><center>ERROR 404</center></p>
+<p><center>Hello</center></p>
+<p><center>This site is under construction or temporarily unavailable</center></p>
+<p><center>Please come back later</center></p>
+
+---------------------------------------------------
+
+
+*** MySQL ***********************************************************
+---------------------------------------------------------------------
+--- Установка MySQL -------------------------------------------------
+---------------------------------------------------------------------
+*** Установим MySQL с помощью apt
+--- $ sudo apt install mysql-server
+
+*** Меняем метод аутентификации
+* Войдите в MySQl
+--- $ sudo mysql
+* Чтобы настроить для учетной записи root аутентификацию с помощью пароля, выполните следующую команду 
+--- $ mysql> ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY 'YOR-PASSWORD';
+* Перезагрузить сервер
+--- $ mysql> FLUSH PRIVILEGES;
+* Проверьте методы аутентификации.
+--- $ mysql> SELECT user,authentication_string,plugin,host FROM mysql.user;
+* Выходим из MySQL и проверяем вход под root
+--- $ mysql> exit
+
+
+* Рекомендуется запустить скрипт безопасности, предустановленный в MySQL
+* Скрипт предложит настроить плагин VALIDATE PASSWORD PLUGIN
+--- $ sudo mysql_secure_installation
+--- Please enter 0 = LOW, 1 = MEDIUM and 2 = STRONG: 2 ( 1 слабый пароль )
+--- Установка нового пароля root при необходимости
+--- Для всех остальных вопросов нужно выбирать Y
+
+* Проверка входа в SQL 
+--- $ sudo mysql -u root -p
+* Выход из SQL
+--- $ sudo mysql> exit
+
+---------------------------------------------------------------------
+---------------------------------------------------------------------
+
+
+
+*** PHP *************************************************************
+---------------------------------------------------------------------
+--- Установка PHP ---------------------------------------------------
+---------------------------------------------------------------------
+Помимо пакета php потребуется php-mysql и модуль PHP который позволяет PHP взаимодействовать с базами данных MySQL. Также потребуется libapache2-mod-php для активации Apache для обработки файлов PHP. Ключевые пакеты PHP автоматически будут установлены в качестве зависимостей.
+
+
+* Будет установлена версия PHP 7.4.3
+--- $ sudo apt install php libapache2-mod-php php-mysql
+--- $ sudo php -v
+
+* Конфигурации PHP, связанные с Apache, хранятся в файлах /etc/php/7.4/apache2/php.ini. 
+* Вы можете вывести список всех загруженных модулей PHP 
+--- $ sudo php -m
+
+---------------------------------------------------------------------
+---------------------------------------------------------------------
+
+
+
+
+*** Apache ***********************************************************
+---------------------------------------------------------------------
+--- Создание виртуального хоста для сайта ---------------------------
+---------------------------------------------------------------------
+В Apache в Ubuntu 20.04 по умолчанию включен один серверный блок, настроенный на обслуживание документов из директории /var/www/html
+
+* Создайте следующий каталог для example.com:
+--- $ sudo mkdir /var/www/example.com
+
+* Затем необходимо назначить права владения для директории
+--- $ sudo chown -R USER:USER /var/www/example.com
+
+* После этого создайте новый файл конфигурации в директории Apache sites-available
+--- $ sudo nano /etc/apache2/sites-available/example.com.conf
+
+* Вставьте следующую пустую конфигурацию
+
+--- Для Http --------------------------------------------------------
+---------------------------------------------------------------------
+<VirtualHost *:80>
+
+    ServerName   example.com
+    ServerAlias  www.example.com
+
+    DocumentRoot /var/www/your_domain
+
+    <Directory /var/www/example.com>
+         Options +FollowSymlinks
+         AllowOverride All
+         Require all granted
+    </Directory>
+    
+    ErrorLog  ${APACHE_LOG_DIR}/error.log
+    CustomLog ${APACHE_LOG_DIR}/access.log combined
+
+    # Редирект с 80 порта на 443
+
+    Redirect / https://example.com$request_uri
+
+</VirtualHost>
+
+--- Для Https -------------------------------------------------------
+---------------------------------------------------------------------
+<VirtualHost *:443>
+    
+    ServerName   example.com
+    ServerAlias  www.example.com
+
+    # Настраиваем директории сайта
+    
+    DocumentRoot /var/www/example.com
+
+    <Directory /var/www/example.com>
+         Options +FollowSymlinks
+         AllowOverride All
+         Require all granted
+    </Directory>
+
+    # Пути для логов сайта
+
+    ErrorLog   ${APACHE_LOG_DIR}/error.log
+    CustomLog  ${APACHE_LOG_DIR}/access.log combined
+
+    # Включаем редирект с www.example.com => example.com
+
+    RewriteEngine On
+    RewriteCond %{HTTP_HOST} ^www.example.com$ [NC]
+    RewriteRule ^(.*)$ https://example.com$1 [R=301,L]
+
+    # Перенаправляем ошибку 404
+
+    ErrorDocument 404 https://example.com/404.html
+
+    # Получить реальный IP от прокси сервера
+
+    RemoteIPHeader X-Real-IP
+    RemoteIPHeader X-Client-IP
+    RemoteIPHeader X-Forwarded-For
+    RemoteIPInternalProxy XX.XX.XX.XX
+
+    # GET LATEST LIST FROM CLOUDFLARE
+    # https://www.cloudflare.com/ips/
+
+    RemoteIPHeader CF-Connecting-IP
+
+    RemoteIPTrustedProxy 103.21.244.0/22
+    RemoteIPTrustedProxy 103.22.200.0/22
+    RemoteIPTrustedProxy 103.31.4.0/22
+    RemoteIPTrustedProxy 104.16.0.0/13
+    RemoteIPTrustedProxy 104.24.0.0/14
+    RemoteIPTrustedProxy 108.162.192.0/18
+    RemoteIPTrustedProxy 131.0.72.0/22
+    RemoteIPTrustedProxy 141.101.64.0/18
+    RemoteIPTrustedProxy 162.158.0.0/15
+    RemoteIPTrustedProxy 172.64.0.0/13
+    RemoteIPTrustedProxy 173.245.48.0/20
+    RemoteIPTrustedProxy 188.114.96.0/20
+    RemoteIPTrustedProxy 190.93.240.0/20
+    RemoteIPTrustedProxy 197.234.240.0/22
+    RemoteIPTrustedProxy 198.41.128.0/17
+    RemoteIPTrustedProxy 2400:cb00::/32
+    RemoteIPTrustedProxy 2606:4700::/32
+    RemoteIPTrustedProxy 2803:f800::/32
+    RemoteIPTrustedProxy 2405:b500::/32
+    RemoteIPTrustedProxy 2405:8100::/32
+    RemoteIPTrustedProxy 2a06:98c0::/29
+    RemoteIPTrustedProxy 2c0f:f248::/32
+
+    # Подключаем сертификаты SSL
+
+    SSLEngine on
+    SSLCertificateFile     /etc/apache2/certificate/apache2.crt
+    SSLCertificateKeyFile  /etc/apache2/certificate/apache2.key
+
+</VirtualHost>
+---------------------------------------------------------------------
+---------------------------------------------------------------------
+
+* Теперь вы можете использовать a2ensite для активации нового виртуального хоста
+--- $ sudo a2ensite example.com
+
+* Активация модуля перезаписи mod_rewrite для использования постоянных ссылок !!!
+--- $ sudo a2enmod rewrite
+
+* Включите мод получения реальных ip
+--- $ sudo a2enmod remoteip
+
+
+* Чтобы отключить конфигурацию сайт Apache по умолчанию
+--- $ sudo a2dissite 000-default
+--- $ sudo a2dissite default-ssl
+
+* Лучше сделать редирект с IP на основной домен
+--- $ sudo  nano /etc/apache2/sites-available/000-default.conf
+--- $ sudo  nano /etc/apache2/sites-available/default-ssl.conf
+
+* Добавляем  Redirect / https://example.com$request_uri
+
+
+* Чтобы убедиться в отсутствии ошибок синтаксиса в вашем файле конфигурации
+--- $ sudo apache2ctl configtest
+
+* В заключение перезагрузите Apache, чтобы эти изменения вступили в силу
+--- $ sudo systemctl reload apache2
+
+* Далее идем в конфигурационный файл и добавляем токен и почту cloudflare
+-- $ nano /etc/fail2ban/action.d/cloudflare.conf
+
+--- cloudflare.conf ----------------------------
+------------------------------------------------
+cftoken = XXXXXXXXXXXXXXXXX
+
+cfuser = mail@example.com
+------------------------------------------------
+------------------------------------------------
+
+
+* Создайте файл index.html /var/www/example.com
+--- $ sudo nano /var/www/example.com/index.html
+
+---------------------------------------------------------------------
+---------------------------------------------------------------------
+<h1>It works!</h1>
+---------------------------------------------------------------------
+---------------------------------------------------------------------
+
+* Примечание о DirectoryIndex в Apache
+Если в Apache используются настройки DirectoryIndex по умолчанию, файл index.html всегда будет иметь приоритет по сравнению файлом index.php. Если вы хотите изменить это поведение, отредактируйте файл /etc/apache2/mods-enabled/dir.conf и измените порядковое расположение файла index.php в директиве DirectoryIndex:
+--- $ sudo nano /etc/apache2/mods-enabled/dir.conf
+
+
+
+РЕДИРЕКТА htaccess ЕСЛИ ОН НЕ ПРОПИСАН В КОНФИГ ФАЙЛЕ
+
+--- $ sudo nano /var/www/example.com/.htaccess
+
+---------------------------------------------------------------------
+--- .htaccess ---- www.example.com => example.com -------------------
+---------------------------------------------------------------------
+ RewriteEngine On
+ RewriteCond %{HTTP_HOST} ^www.example.com$ [NC]
+ RewriteRule ^(.*)$ http://example.com$1 [R=301,L]
+---------------------------------------------------------------------
+--- .htaccess ---- example.com => www.example.com -------------------
+---------------------------------------------------------------------
+RewriteEngine On
+RewriteCond %{HTTP_HOST} ^example.com
+RewriteRule (.*) http://www.example.com$1 [R=301,L]
+---------------------------------------------------------------------
+---------------------------------------------------------------------
+
+
+---------------------------------------------------------------------
+--- Тестирование обработки PHP на веб-сервере -----------------------
+---------------------------------------------------------------------
+* Создайте новый файл с именем info.php в корневой папке сайта
+--- $ sudo nano /var/www/example.com/info.php
+
+-------------------
+<?php
+ phpinfo();
+ ?>
+-------------------
+
+https://example.com/info.php
+
+--- $ sudo rm /var/www/example.com/info.php
+
+---------------------------------------------------------------------
+---------------------------------------------------------------------
+
+Fail2Ban Защита Apache
+
+* Настройка Fail2Ban для мониторинга журналов Apache
+
+
+* UFW Apache 
+
+--- $ sudo ufw status
+
+Available applications:
+  Apache
+  Apache Full
+  Apache Secure
+
+* Удаление правил UFW ***************************
+--- $ sudo ufw status numbered
+--- $ sudo ufw delete номер правила
+
+--- $ sudo ufw allow in "Apache Secure"
+--- $ sudo ufw status
+
+
+----------------------------------------------------------------------
+
+* Установка Certbot
+--- $ sudo apt install certbot python3-certbot-apache
+
+* Получение сертификата SSL
+--- $ sudo certbot --apache
+
+* После завершения записи сертификатов автоматически добавиться в конфиг файл сайта
+--- $ sudo cd /etc/apache2/sites-available
+
+* Проверка автоматического обновления Certbot
+--- $ sudo systemctl status certbot.timer
+
+
+
+
+

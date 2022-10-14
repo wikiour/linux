@@ -1,0 +1,301 @@
+
+Базовая настройка Ubuntu Server HYPER-V
+
+------------------------------------------
+Начальная настройка сервера Ubuntu Server
+--- Что должно быть настроено:
+* Обновлены все пакеты
+* Смена порта SSH и закрытие доступа по IP
+* Обновление конфигурации IP
+* Настройка базового брандмауэра UFW
+* Настройка базового Fail2ban
+* Настройка ключей SSH
+
+Работаем только через sudo !!!
+
+Обновление сервера
+--- $ sudo apt update  # Обновляем все пакеты
+--- $ sudo apt upgrade # Обновляем конфигурацию
+--- $ sudo reboot      # После перезапускаем сервер для применения всех изменений
+
+--------------------------------------------------------------
+------ Вход SSH ----------------------------------------------
+--------------------------------------------------------------
+* Вход SSH 
+--- $ ssh user@XX.XX.XX.XX
+
+* Вход по порту
+--- $ ssh user@XX.XX.XX.XX -p XXXX
+
+* Очистить кеш SSH
+--- $ ssh-keygen -R "XX.XX.XX.XX"
+
+* Или так 
+--- $ ssh-keygen -R hostname
+
+* С портом 
+--- $ ssh-keygen -R [XX.XX.XX.XX]:XXXX
+
+--------------------------------------------------------------
+------ Меняем порт SSH  --------------------------------------
+--------------------------------------------------------------
+* Смена порта SSH
+--- $ sudo nano /etc/ssh/sshd_config
+
+Запрещаем доступ с определенных IP по SSH в hosts.allow
+
+--- $ sudo nano /etc/hosts.allow           # указываем нужные IP
+
+sshd: XX.XX.XX.0/24                   # открываем локальную сеть
+sshd: XX.XX.XX.XX                     # открываем IP адреса
+sshd: XX.XX.XX.XX, XX.XX.XX.XX        # открываем IP адреса
+sshd: XX.XX.XX.XX - XX.XX.XX.XX       # открываем диапазон IP адресов
+
+* Редактируем hosts.deny
+--- $ sudo nano /etc/hosts.deny       # запрещаем всем остальным
+
+sshd: ALL                             # Запрещаем всем кроме указанных в hosts.allow
+
+* Перезапустить ssh
+--- $ sudo service ssh restart
+
+* Или так перезапустить ssh
+--- $ sudo stopping sshd
+--- $ sudo starting sshd
+
+######################################################
+######### Настройка базового брандмауэра UFW #########
+######################################################
+
+Открытие порта SSH      --- $ sudo ufw allow XXXX/tcp
+Запуск брандмауэра      --- $ sudo ufw enable
+Статус                  --- $ sudo ufw status
+
+######################################################
+
+* Создание нового пользователя
+--- $ sudo adduser newuser
+
+* Предоставление административных прав
+--- $ sudo usermod -aG sudo newuser
+
+* Войти как newuser
+--- $ sudo su - newuser
+
+
+######################################################
+######### Обновление конфигурации IP #################
+######################################################
+
+* Настройки сети хранятся /etc/netplan/ в файле yaml
+--- $ sudo nano /etc/netplan/*.yaml
+
+* Заменить на новые
+------------------------------------------------------
+network:
+    version: 2
+    renderer: networkd
+    ethernets:
+        eth0:
+            addresses:
+                - 192.168.1.XXX/24
+            nameservers:
+                addresses: [8.8.8.8, 8.8.4.4]
+            routes:
+                - to: default
+                  via: 192.168.1.1
+------------------------------------------------------
+* Примените измененные настройки
+--- $ sudo netplan apply
+
+
+*** Установим часовой пояс
+
+* Текущий часовой пояс
+--- $ sudo timedatectl
+* Посмотреть часовые пояса
+--- $ sudo timedatectl list-timezones
+* Устоновить часовой пояс 
+--- $ sudo timedatectl set-timezone Europe/Kiev
+
+
+
+######################################################
+####### Настройка базового Fail2ban ##################
+######################################################
+
+* Установим Fail2ban
+--- $ sudo apt-get install fail2ban
+
+* Включим в автозагрузку при рестарте системы
+ --- $ sudo systemctl enable fail2ban
+
+* Создать jail.local для конфигурации
+--- $ sudo nano /etc/fail2ban/jail.local
+
+--- jail.local -------------------------------------------------
+----------------------------------------------------------------
+[DEFAULT]
+
+ignoreip    = XX.XX.XX.XX, XX.XX.XX.XX
+findtime    = 3600
+maxretry    = 3
+bantime     = 86400
+backend     = auto
+usedns      = warn
+banaction   = iptables-allports
+protocol    = tcp
+chain       = INPUT
+action      = cloudflare
+              telegram
+
+
+[ssh]
+
+enabled  = true
+port     = XXXX
+maxretry = 1
+filter   = sshd
+logpath  = /var/log/auth.log
+----------------------------------------------------------------
+----------------------------------------------------------------
+
+*** Включить Fail2ban Telegram Notifications
+
+* Создайте каталог scripts
+--- $ sudo mkdir /etc/fail2ban/scripts
+
+* Создать файл telegram.conf в /etc/fail2ban/action.d/
+--- $ sudo nano /etc/fail2ban/action.d/telegram.conf
+
+--- telegram.conf ---------------------------------------------
+---------------------------------------------------------------
+[Definition]
+
+actionstart = /etc/fail2ban/scripts/telegram.sh -a start 
+actionstop  = /etc/fail2ban/scripts/telegram.sh -a stop
+actioncheck = 
+actionban   = /etc/fail2ban/scripts/telegram.sh -n <name> -b <ip>
+actionunban = /etc/fail2ban/scripts/telegram.sh -n <name> -u <ip>
+
+[Init]
+
+init = 123
+---------------------------------------------------------------
+---------------------------------------------------------------
+
+* Создайте файл telegram.sh в /etc/fail2ban/scripts/
+--- $ sudo nano /etc/fail2ban/scripts/telegram.sh
+
+--- telegram.sh -----------------------------------------------
+---------------------------------------------------------------
+#!/bin/bash
+
+# Telegram BOT Token 
+telegramBotToken='XXXXXXXXXXXXXXXXXXXXXXX'
+
+# Telegram Chat ID
+telegramChatID='XXXXXXXXXXXXXXXXXXXXXXX'
+
+function talkToBot() {
+	message=$1
+	curl -s -X POST https://api.telegram.org/bot${telegramBotToken}/sendMessage -d text="${message}" -d chat_id=${telegramChatID} > /dev/null 2>&1
+}
+
+if [ $# -eq 0 ]; then
+	echo "Usage $0 -a ( start || stop ) || -b \$IP || -u \$IP"
+	exit 1;
+fi
+
+while getopts "a:n:b:u:" opt; do
+	case "$opt" in
+		a)
+			action=$OPTARG
+		;;
+		n)
+			jail_name=$OPTARG
+		;;
+		b)
+			ban=y
+			ip_add_ban=$OPTARG
+		;;
+		u)
+			unban=y
+			ip_add_unban=$OPTARG
+		;;
+		\?) 
+			echo "SERVER-NAME Invalid option. -$OPTARG" 
+			exit 1
+		;;
+	esac
+done
+
+if [[ ! -z ${action} ]]; then
+	case "${action}" in
+		start)
+			talkToBot "Fail2ban SERVER-NAME start"
+		;;
+		stop)
+			talkToBot "Fail2ban SERVER-NAME stop"
+		;;
+		*)
+			echo "SERVER-NAME Incorrect option"
+			exit 1;
+		;;
+	esac
+elif [[ ${ban} == "y" ]]; then
+	talkToBot "[${jail_name}] The IP: ${ip_add_ban} BAN SERVER-NAME"
+	exit 0;
+elif [[ ${unban} == "y" ]]; then
+	talkToBot "[${jail_name}] The IP: ${ip_add_unban} NO-BAN SERVER-NAME"
+	exit 0;
+else
+	info
+fi
+-------------------------------------------------------------
+-------------------------------------------------------------
+
+* Создайте исполняемый файл telegram.sh
+--- $ sudo chmod +x /etc/fail2ban/scripts/telegram.sh
+
+
+* Далее идем в конфигурационный файл и добавляем токен и почту для cloudflare
+
+-- $ sudo nano /etc/fail2ban/action.d/cloudflare.conf
+
+--- cloudflare.conf ----------------------------
+------------------------------------------------
+cftoken = XXXXXXXXXXXXXXXXXXXXXXX
+
+cfuser  = mail@examle.com
+------------------------------------------------
+------------------------------------------------
+
+
+* Проверить состояние fail2ban
+--- $ sudo systemctl status fail2ban
+
+* Перезапустить сервис
+--- $ sudo service fail2ban restart
+
+* Получение информации о включенных фильтрах
+--- $ sudo fail2ban-client status
+
+--------------------------------------------------------------
+-------------- Настройка хранения журналов -------------------
+--------------------------------------------------------------
+* Настройка хранения журналов находится:
+--- $ sudo cd /etc/logrotate.d
+
+* Чтобы уменьшить время хранения архивов nginx
+--- $ sudo nano /etc/logrotate.d/nginx  # Изменить значение rotate 14 на rotate 7 (дней)
+
+* Чтобы уменьшить время хранения архивов apache
+--- $ sudo nano /etc/logrotate.d/apache2  # Изменить значение rotate 14 на rotate 7 (дней)
+
+
+
+
+
+
+

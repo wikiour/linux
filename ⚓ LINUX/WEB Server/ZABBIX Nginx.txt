@@ -1,0 +1,337 @@
+Установка * ZABBIX 6.0 LTS
+
+ZABBIX-MONITORING              https://www.zabbix.com/ru
+Скачать и установить Zabbix    https://www.zabbix.com/ru/download
+Интеграции                     https://www.zabbix.com/ru/integrations
+
+Stack = Ubuntu 20.04 + Nginx + MySQL
+Security = UFW + Fail2Ban
+
+-----------------------------------------------------------------------------------------
+Начальная настройка сервера Ubuntu
+--- Что должно быть настроено:
+* Обновлены все пакеты
+* Смена порта SSH и закрытие доступа по IP
+* Обновление конфигурации IP
+* Настройка базового брандмауэра UFW
+* Настройка базового Fail2ban
+* Настройка ключей SSH
+
+-------------------------------------------------------------------------------------------
+------- Установка Zabbix 6.0 LTS Ubuntu 20.04 ---------------------------------------------
+-------------------------------------------------------------------------------------------
+* Скачайте репозиторий Zabbix для Ubuntu 20.04
+--- $ wget https://repo.zabbix.com/zabbix/6.0/ubuntu/pool/main/z/zabbix-release/zabbix-release_6.0-1+ubuntu20.04_all.deb
+
+* Распакуйте репозиторий Zabbix
+--- $ dpkg -i zabbix-release_6.0-1+ubuntu20.04_all.deb
+
+* Обновите пакеты
+--- $ apt update
+
+* Удалите скаченый архив репозитория Zabbix
+--- $ rm zabbix-release_6.0-1+ubuntu20.04_all.deb
+
+* Установите Zabbix сервер, веб-интерфейс и агент
+--- $ apt install zabbix-server-mysql zabbix-frontend-php zabbix-nginx-conf zabbix-sql-scripts zabbix-agent
+
+* Открыть порты Nginx
+--- $ ufw allow 'Nginx Full'
+
+* Проверить статус ufw
+--- $ ufw status
+
+* Установите и настройте MySQL
+
+////////////////////////////////////////////////////////////////////////
+////////// Установка MySQL//////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////
+
+# Используйте apt для получения и установки этого программного обеспечения:
+--- $ apt install mysql-server
+
+# Меняем менетод аутентификации
+- Войдите в MySQl
+--- $ mysql
+
+* Чтобы настроить для учетной записи root аутентификацию с помощью пароля, выполните следующую команду 
+--- $mysql> ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY 'YOR-PASSWORD';
+
+* Перезагрузить сервер
+--- $mysql> FLUSH PRIVILEGES;
+
+* Проверьте методы аутентификации.
+--- $mysql> SELECT user,authentication_string,plugin,host FROM mysql.user;
+
+* Выходим из MySQL и проверяем вход под root
+--- $mysql> exit
+
+
+* Рекомендуется запустить скрипт безопасности, предустановленный в MySQL
+* Скрипт предложит настроить плагин VALIDATE PASSWORD PLUGIN
+--- $ mysql_secure_installation
+- Please enter 0 = LOW, 1 = MEDIUM and 2 = STRONG: 2 ( 1 слабый пароль )
+- Установка нового пароля root при необходимости
+- Для всех остальных вопросов нужно выбирать Y
+
+* Проверка входа в SQL 
+--- $ mysql -u root -p
+
+* Выход из SQL
+--- $mysql> exit
+
+////////////////////////////////////////////////////////////////////////
+
+* Создайте базу данных
+--- $ mysql -u root -p
+
+--- $mysql> create database zabbix character set utf8mb4 collate utf8mb4_bin;
+--- $mysql> create user zabbix@localhost identified by 'YOR-PASSWORD';
+--- $mysql> grant all privileges on zabbix.* to zabbix@localhost;
+--- $mysql> exit;
+
+* Импортируйте начальную схему и данные
+--- $ zcat /usr/share/doc/zabbix-sql-scripts/mysql/server.sql.gz | mysql -uzabbix -p zabbix
+
+* Настройте базу данных для Zabbix
+--- $ nano /etc/zabbix/zabbix_server.conf
+* DBPassword=password
+
+* Настройте PHP для веб-интерфейса nginx
+--- $ nano /etc/zabbix/nginx.conf
+* раскомментируйте и настройте директивы 'listen' и 'server_name'.
+
+* Запустите процессы Zabbix сервера и агента
+--- $ systemctl restart zabbix-server zabbix-agent nginx php7.4-fpm
+--- $ systemctl enable zabbix-server zabbix-agent nginx php7.4-fpm
+
+* Включите запуск сервера в момент загрузки
+--- $ systemctl enable zabbix-server
+
+
+////////////////////////////////////////////////////////////////////////
+
+* Удалите Apache2
+--- $ sudo systemctl disable apache2 && sudo systemctl stop apache2
+--- $ sudo apt-get purge apache2 apache2-utils apache2.2-bin apache2-common
+--- $ sudo apt-get autoremove
+
+* Посмотрите пути к файлам apache2
+--- $ whereis apache2
+
+* Удалите файлы apache2
+--- $ rm -rf /usr/sbin/apache2 
+--- $ rm -rf /usr/lib/apache2 
+--- $ rm -rf /etc/apache2 
+--- $ rm -rf /usr/share/apache2 
+--- $ rm -rf /usr/share/man/man8/apache2.8.gz
+
+* Проверьте удаление
+--- $ which apache2                       # должен возвращать пустую строку
+--- $ service apache2 start               # должен вернуть apache2: нераспознанная служба
+
+* Перезагрузите сервер
+--- $ reboot
+
+В каталоге /var/www/html остаются файлы по умолчанию ! их лучше изменить или удалить.
+
+
+* Настройте веб-интерфейс Zabbix
+--- http://server_ip_or_name
+
+User = Admin
+Pass = zabbix
+
+* Настройка PHP для Zabbix
+--- $ nano /etc/zabbix/php-fpm.conf
+* Теперь перезапустите PHP-FPM для применения новых настроек
+--- $ systemctl restart php7.4-fpm.service
+
+* Проверьте правильность работы сервера Zabbix
+--- $ systemctl status zabbix-server
+
+* Обновите все пакеты сервера
+--- $ apt update  # Обновляем все пакеты
+--- $ apt upgrade # Обновляем конфигурацию
+
+* Перезагрузите сервер
+--- $ reboot
+
+//////////////////////////////////////////////////////////////////////
+////// Рабочии порты Zabbix //////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////
+
+Порты Zabbix агента (10050 TCP) и Zabbix траппера (10051 TCP)
+Порты HTTP (80 TCP) и HTTPS (443 TCP)
+Порт SNMP трапов (162 UDP)
+Исходящие подключения на порт DNS (53 UDP)
+Исходящие подключения на порт NTP (123 UDP)
+ICMP пакеты ограничены 5 пакетами в секунду
+Все остальные входящие подключение отбрасываются ...
+
+* На стороне клиента
+TCP-порты: 10051
+
+////////////////////////////////////////////////////////////////////
+///////////////// Повышение безопасности в Zabbix //////////////////
+////////////////////////////////////////////////////////////////////
+
+* Создайте папку для сертификатов
+-- $ mkdir /etc/zabbix/certificate
+* Переходим в новый каталог
+-- $ cd /etc/zabbix/certificate
+
+* Создаем самозаверяющийся сертификат
+
+-------------------------------------------------------
+openssl req \
+       -newkey rsa:2048 -nodes -keyout zabbix.key \
+       -x509 -out zabbix.crt
+-------------------------------------------------------
+
+* Теперь у нас два сертификата 
+* zabbix.crt и zabbix.key
+
+* Отредактируйте zabbix.conf
+-- $ nano /etc/nginx/conf.d/zabbix.conf
+
+------------------------------------------------------------------------
+server {
+
+         listen 443 ssl;
+         server_name XX.XX.XX.XX;
+
+         ssl_certificate /etc/zabbix/certificate/zabbix.crt;
+         ssl_certificate_key /etc/zabbix/certificate/zabbix.key;
+
+}
+-----------------------------------------------------------------------
+
+* Отредактируйте серверный блок по умолчанию
+* Добавьте сертификаты и редирект на https
+-- $ nano /etc/nginx/sites-available/default
+
+--- Пример -------------------------------------------------------------
+server {
+
+        listen 80 default_server;
+        listen [::]:80 default_server;
+
+        listen 443 ssl default_server;
+        listen [::]:443 ssl default_server;
+
+        ssl_certificate /etc/zabbix/certificate/zabbix.crt;
+        ssl_certificate_key /etc/zabbix/certificate/zabbix.key;
+
+          ..........
+------------------------------------------------------------------------
+
+* Чтобы избежать возможной проблемы с хэшированием памяти раскоментируйте директиву server_names_hash_bucket_size 
+-- $ nano /etc/nginx/nginx.conf
+
+* Проверяем конфигурацию
+-- $ nginx -t
+* Перезапускаем nginx
+-- $ systemctl restart nginx
+
+
+###############################################################
+############ UFW ##############################################
+###############################################################
+
+* Проверяем открытые порты
+--- $ ufw status
+
+*** Удаление ненужных правил правил UFW и открывам те которые небходимы
+--- $ ufw status numbered
+--- $ ufw delete номер правила
+
+* Открыть порты Zabbix
+--- $ ufw allow 10050/tcp
+--- $ ufw allow 10051/tcp
+--- $ ufw allow 162/tcp
+--- $ ufw allow 53/tcp
+--- $ ufw allow 123/tcp
+* Проверить статус открытых портов ufw
+--- $ ufw status
+
+##############################################################
+############ Fail2Ban ########################################
+##############################################################
+
+*** Настроить защиту Nginx и MySQL с Fail2Ban
+
+---------------------------------------------------------------
+--- Защита Nginx с помощью Fail2Ban ---------------------------
+---------------------------------------------------------------
+
+* Добавляем следующие фильтры Fail2Ban для Nginx
+
+[nginx-http-auth]      - Определяет неудачные попытки ввода пароля
+
+[nginx-badbots]        - Определяем ботов, которые ищут email адреса
+
+[nginx-noproxy]        - Блокирует клиентов которые пытаются использовать Nginx как прокси-сервер
+
+[nginx-noconnect]      - Блокирует IP которые используют метод Connect
+
+[nginx-nohome]         - Блокируем неудачные попытки поиска домашней директории
+
+[nginx-limit-req]      - Защита веб-сервера от DDoS-атак
+
+
+* Создание фильтра авторизации Fail2Ban для Zabbix
+
+--- jail.local --------------------------------------------------------------------
+-----------------------------------------------------------------------------------
+[zabbix]
+
+enabled  = true
+port     = http,https
+filter   = zabbix
+logpath  = /var/log/nginx/access.log
+-----------------------------------------------------------------------------------
+--- zabbix.conf -------------------------------------------------------------------
+-----------------------------------------------------------------------------------
+[Definition]
+
+failregex = ^<HOST> -.*"POST /index.php HTTP/1.1" 200
+
+ignoreregex =
+-----------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------
+*** Проверка срабатывания правил
+--- $ fail2ban-regex /var/log/nginx/access.log /etc/fail2ban/filter.d/zabbix.conf
+
+
+--------------------------------------------------------------
+--- Защита MySQL с помощью Fail2Ban --------------------------
+--------------------------------------------------------------
+
+[mysqld-auth]        - Защита MySQL 
+
+--------------------------------------------------------------
+--------------------------------------------------------------
+
+* Проверить состояние fail2ban
+--- $ systemctl status fail2ban
+* Перезапустить сервис
+--- $ service fail2ban restart
+* Получение информации о включенных джейлах
+--- $ fail2ban-client status
+
+
+#####################################################################
+### Установка и настройка агента Zabbix #############################
+#####################################################################
+
+* Запустите следующие команды для установки пакета конфигурации репозитория
+--- $ wget https://repo.zabbix.com/zabbix/5.0/ubuntu/pool/main/z/zabbix-release/zabbix-release_5.0-1+focal_all.deb
+--- $ dpkg -i zabbix-release_5.0-1+focal_all.deb
+--- $ apt update
+* Удалите скаченный архив
+--- $ rm zabbix-release_5.0-1+focal_all.deb
+
+* Затем установите агент Zabbix
+--- $ apt install zabbix-agent
+

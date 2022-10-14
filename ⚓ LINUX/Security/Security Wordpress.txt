@@ -1,0 +1,307 @@
+Настройка безопасности в WordPress
+
+* После установки WordPress можно удалить несколько файлов, которые больше не нужны
+--- readme.html
+--- wp-config-sample.php
+--- /wp-admin/install.php
+
+* Переместите конфигурационный файл за приделы public
+--- $ mv /var/www/example.com/public/wp-config.php /var/www/example.com/
+
+* Для некоторых файлов и папок можно установить более сильные ограничения:
+
+/example.com/public/    - 750
+.htaccess               - 640
+wp-admin/               - 750
+wp-admin/js/            - 750
+wp-admin/index.php      - 640
+wp-content/             - 750
+wp-content/themes/      - 750
+wp-content/plugins/     - 750
+wp-includes/            - 750
+
+---------------------------------------------------------------------------
+--- Защита вашего экземпляра wplogin.php с помощью htpasswd ---------------
+---------------------------------------------------------------------------
+
+Создадим файл .htaccess в  wp-admin со следующим содержимым
+
+--- $ nano /var/www/example.com/public/wp-admin/.htaccess
+
+-----------------------------------------------------
+AuthType Basic
+AuthName "Go Away"
+AuthUserFile /var/www/example.com/.htpasswd
+Require valid-user
+-----------------------------------------------------
+
+Вот что означает каждая из этих строк:
+
+AuthType Basic: указывается тип аутентификации, который вы реализуете. Этот тип реализует аутентификацию по паролю с использованием файла паролей.
+
+AuthName: устанавливает сообщение для диалогового окна аутентификации. Вы должны оставить это общим, чтобы неавторизованные пользователи не получили никакой информации о том, что защищается.
+
+AuthUserFile: устанавливает расположение файла паролей, который будет использоваться для аутентификации. Это должно быть за пределами каталогов, которые обслуживаются.
+
+Require valid-user: Это указывает, что только аутентифицированные пользователи должны иметь доступ к этому ресурсу. Это то, что на самом деле предотвращает вход неавторизованных пользователей.
+
+
+
+* Теперь можем создать файл .htpasswd и передать его начальному пользователю с помощью htpasswd утилиты. 
+* Будет предложено выбрать и подтвердить пароль для создаваемого пользователя. После этого создается файл с введенным вами хешированным паролем
+--- $ htpasswd -c /var/www/example.com/.htpasswd username
+
+* Если вы хотите ввести дополнительного пользователя, вам нужно сделать это без флага -c
+--- $ htpasswd /var/www/example.com/.htpasswd username-2
+--- $ htpasswd /var/www/example.com/.htpasswd username-3
+
+* Затем перезапустите Apache, чтобы активировать .htaccessа утентификацию
+--- $ systemctl restart apache2
+
+---------------------------------------------------------------------------
+---------------------------------------------------------------------------
+
+
+* Смена ключи безопасности wp-config.php
+* Генераторе ключей WordPress https://api.wordpress.org/secret-key/1.1/salt/
+
+---------------------------------------------------------------------------
+--- wp-config.php ---------------------------------------------------------
+---------------------------------------------------------------------------
+
+/* Добавьте эти строки в файл wp-config.php перед строкой /*
+
+/* That's all, stop editing! Happy blogging. */
+/* Это всё, дальше не редактируем. Успехов! */
+
+/* Чтобы зашифровать логин и пароль во время передачи их серверу */
+define('FORCE_SSL_LOGIN', true);
+
+/* Чтобы использовать SSL в админ части сайта */
+define('FORCE_SSL_ADMIN', true);
+
+/* ---------------------------------------------------------- */
+/* Это всё, дальше не редактируем. Успехов! */
+
+/* Права доступа к файлам и папкам */
+define('FS_CHMOD_FILE', 0644);
+define('FS_CHMOD_DIR', 0755);
+
+/* Включить принудительное использование FTPS */
+define('FTP_SSL', true);
+
+
+---------------------------------------------------------------------------
+---------------------------------------------------------------------------
+
+
+
+
+
+
+---------------------------------------------------------------------------
+--- Правила в .htaccess ---------------------------------------------------
+---------------------------------------------------------------------------
+# Запрет доступа к файлам wp-config.php, htaccess, php.ini и логам ошибок.
+<FilesMatch "^.*(error_log|wp-config\.php|php.ini|\.[hH][tT][aApP].*)$">
+Order deny,allow
+Deny from all
+</FilesMatch>
+
+# Запретить доступ только к файлу wp-config.php
+<files wp-config.php>
+order allow,deny
+deny from all
+</files>
+
+# Запретить доступ ко всем файлам .htaccess на сайте
+<files ~ "^.*\.([Hh][Tt][Aa])">
+order allow,deny
+deny from all
+satisfy all
+</files>
+
+# Запрет доступа к директориям сайта
+Options All -Indexes
+
+
+# Запретите доступ к PHP файлам
+RewriteCond %{REQUEST_URI} !^/wp-content/plugins/file/to/exclude\.php
+RewriteCond %{REQUEST_URI} !^/wp-content/plugins/directory/to/exclude/
+RewriteRule wp-content/plugins/(.*\.php)$ - [R=404,L]
+RewriteCond %{REQUEST_URI} !^/wp-content/themes/file/to/exclude\.php
+RewriteCond %{REQUEST_URI} !^/wp-content/themes/directory/to/exclude/
+RewriteRule wp-content/themes/(.*\.php)$ - [R=404,L]
+
+
+# Защита сайт от внедрения вредоносных скриптов
+Options +FollowSymLinks
+RewriteEngine On
+RewriteCond %{QUERY_STRING} (<|%3C).*script.*(>|%3E) [NC,OR]
+RewriteCond %{QUERY_STRING} GLOBALS(=|[|%[0-9A-Z]{0,2}) [OR]
+RewriteCond %{QUERY_STRING} _REQUEST(=|[|%[0-9A-Z]{0,2})
+RewriteRule ^(.*)$ index.php [F,L]
+
+# Запрет доступа к папке wp-includes (ядро сайта)
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteBase /
+RewriteRule ^wp-admin/includes/ - [F,L]
+RewriteRule !^wp-includes/ - [S=3]
+RewriteRule ^wp-includes/[^/]+\.php$ - [F,L]
+RewriteRule ^wp-includes/js/tinymce/langs/.+\.php - [F,L]
+RewriteRule ^wp-includes/theme-compat/ - [F,L]
+</IfModule>
+
+# Отключить показ версии PHP в заголовках ответов сервера
+<IfModule mod_headers.c>
+  Header unset X-Powered-By
+  Header unset Server
+</IfModule>
+
+# Отключите XML-RPC это API интерфейс, который используется Wordpress для удаленного доступа к сайту
+<Files xmlrpc.php>
+Order Allow,Deny
+Deny from all
+</Files>
+
+# Отключите нумерацию пользователей
+RewriteCond %{QUERY_STRING} author=d
+RewriteRule ^ /? [L,R=301]
+
+# Запретите исполнение PHP файлов
+# Для этого создайте в папке wp-content/uploads новый файл .htaccess и добавьте это правило:
+<Files "*.php">
+Order Deny,Allow
+Deny from All
+</Files>
+
+# Доступ только к разрешенным типам файлов
+# Для этого создайте в папке wp-content новый файл .htaccess и добавьте это правило:
+Order deny,allow
+Deny from all
+<Files ~ ".(css|js|xml|jpeg|png|gif|pdf|zip|rar|docx|rtf|odf)$">
+Allow from all
+</Files>
+
+
+
+
+# Закройте доступ к wp-login.php и wp-admin по IP
+ErrorDocument 401 /путь-к-вашему-сайту/index.php?error=404
+ErrorDocument 403 /путь-к-вашему-сайту/index.php?error=404
+
+<IfModule mod_rewrite.c>
+RewriteEngine on
+RewriteCond %{REQUEST_URI} ^(.*)?wp-login\.php(.*)$ [OR]
+RewriteCond %{REQUEST_URI} ^(.*)?wp-admin$
+RewriteCond %{REMOTE_ADDR} !^IP Адрес 1$
+RewriteCond %{REMOTE_ADDR} !^IP Адрес 2$
+RewriteCond %{REMOTE_ADDR} !^IP Адрес 3$
+RewriteRule ^(.*)$ - [R=403,L]
+</IfModule>
+
+# Еще один способ это создать файл .htaccess в папке wp-admin. Это правило разрешает доступ к папке только указанным ip.
+
+<Limit GET POST PUT>
+order deny,allow
+deny from all
+allow from IP Адрес 1
+allow from IP Адрес 2
+</Limit>
+
+---------------------------------------------------------------------------
+---------------------------------------------------------------------------
+
+
+---------------------------------------------------------------------------
+--- functions.php ---------------------------------------------------------
+---------------------------------------------------------------------------
+
+/* Отключение редактирования файлов в админке WP */
+define('DISALLOW_FILE_EDIT', true);
+
+/* Скрыть версию WordPress */
+
+function remove_version_info() {
+     return '';
+}
+add_filter('the_generator', 'remove_version_info');
+
+/* Удалить версии скриптов и стилей */
+function remove_wp_version_strings( $src ) {
+global $wp_version;
+parse_str(parse_url($src, PHP_URL_QUERY), $query);
+if ( !empty($query[‘ver’]) && $query[‘ver’] === $wp_version ) {
+$src = remove_query_arg(‘ver’, $src);
+}
+return $src;
+}
+add_filter( ‘script_loader_src’, ‘remove_wp_version_strings’ );
+add_filter( ‘style_loader_src’, ‘remove_wp_version_strings’ );
+?>
+
+
+---------------------------------------------------------------------------
+--- wp-config.php Отключаем обновление плагинов ---------------------------
+---------------------------------------------------------------------------
+/** Абсолютный путь к директории WordPress. */
+if ( ! defined( 'ABSPATH' ) ) {
+        define( 'ABSPATH', __DIR__ . '/' );
+}
+
+/** Инициализирует переменные WordPress и подключает файлы. */
+require_once ABSPATH . 'wp-settings.php';
+
+/** Отключаем обновление плагинов */
+remove_action( 'load-update-core.php', 'wp_update_plugins' );
+add_filter( 'pre_site_transient_update_plugins', create_function( '$a', "return null;" ) );
+wp_clear_scheduled_hook( 'wp_update_plugins' );
+
+/** Отключаем обновление тем */
+remove_action('load-update-core.php','wp_update_themes');
+add_filter('pre_site_transient_update_themes',create_function('$a', "return null;"));
+wp_clear_scheduled_hook('wp_update_themes');
+
+/** Отключаем обновление WP */
+add_filter('pre_site_transient_update_core',create_function('$a', "return null;"));
+wp_clear_scheduled_hook('wp_version_check');
+---------------------------------------------------------------------------
+---------------------------------------------------------------------------
+
+*** Смена пути к wp-admin
+В начале файла .htaccess добавте следующий код
+---------------------------------------------------------------------------
+--- Правила в .htaccess ---------------------------------------------------
+---------------------------------------------------------------------------
+<IfModule mod_rewrite.c>
+RewriteEngine On
+ 
+RewriteRule ^myloginpage/?$ /wp-login.php?secretkey [R,L]
+ 
+RewriteCond %{HTTP_COOKIE} !^.*wordpress_logged_in_.*$
+RewriteRule ^myloginpage/?$ /wp-login.php?secretkey&amp;redirect_to=/wp-admin/ [R,L]
+ 
+RewriteRule ^myloginpage/?$ /wp-admin/?secretkey [R,L]
+ 
+RewriteCond %{SCRIPT_FILENAME} !^(.*)admin-ajax\.php
+RewriteCond %{HTTP_REFERER} !^(.*)example.com/wp-admin
+RewriteCond %{HTTP_REFERER} !^(.*)example.com/wp-login\.php
+RewriteCond %{HTTP_REFERER} !^(.*)example.com/myloginpage
+RewriteCond %{QUERY_STRING} !^secretkey
+RewriteCond %{QUERY_STRING} !^action=logout
+RewriteCond %{QUERY_STRING} !^action=rp
+RewriteCond %{QUERY_STRING} !^action=postpass
+RewriteCond %{HTTP_COOKIE} !^.*wordpress_logged_in_.*$
+RewriteRule ^.*wp-admin/?|^.*wp-login\.php /not_found [R,L]
+ 
+RewriteCond %{QUERY_STRING} ^loggedout=true
+RewriteRule ^.*$ /wp-login.php?secretkey [R,L]
+</IfModule>
+---------------------------------------------------------------------------
+
+https://example.com/myloginpage
+
+myloginpage  - новый путь
+secretkey    - ключь (Без спец символов!)
+example.com  - ваш сайт

@@ -1,0 +1,221 @@
+Установка WordPress на стек LAMP
+------------------------------------
+
+Предпосылки: подготовленный сервер со стеком LAMP
+
+-----------------------------------------------
+--- Установка дополнительных расширений PHP ---
+-----------------------------------------------
+
+* Загрузить и установить самые популярные расширений PHP, которые будет использовать WordPress
+--- $ sudo apt install php-curl php-gd php-mbstring php-xml php-xmlrpc php-soap php-intl php-zip
+
+* Нам понадобится перезапустить Apache для загрузки этих новых расширений
+--- $ sudo systemctl restart apache2
+
+
+*** Apache ***********************************************************
+---------------------------------------------------------------------
+--- Создание виртуального хоста для сайта ---------------------------
+---------------------------------------------------------------------
+
+* Создайте следующий каталоги для example.com:
+--- $ sudo mkdir /var/www/example.com
+--- $ sudo mkdir /var/www/example.com/public
+--- $ sudo mkdir /var/www/example.com/tmp
+
+* Затем необходимо назначить права владения для директории
+--- $ sudo chown -R USER:USER /var/www/example.com/public
+--- $ sudo chown -R USER:USER /var/www/example.com/tmp
+
+* Можно создать тестовые файлы index.html и info.php
+--------------------------------------------------------
+--- $ sudo nano /var/www/example.com/public/index.html
+С содержимым
+<h1> TEST <h1>
+
+--- $ sudo nano /var/www/example.com/public/info.php
+С содержимым:
+
+<?php
+ phpinfo();
+ ?>
+
+--------------------------------------------------------
+
+* После этого создайте новый файл конфигурации в директории Apache sites-available
+--- $ sudo nano /etc/apache2/sites-available/example.com.conf
+
+* Вставьте следующую конфигурацию
+
+
+--- Для Https -------------------------------------------------------
+---------------------------------------------------------------------
+<VirtualHost *:80>
+
+        Redirect / https://example.com$request_uri
+
+</VirtualHost>
+
+<VirtualHost *:443>
+    
+    ServerName   example.com
+    ServerAlias  www.example.com
+    
+    DocumentRoot /var/www/example.com/public
+
+    <Directory /var/www/example.com/public>
+         Options +FollowSymlinks
+         AllowOverride All
+         Require all granted
+    </Directory>
+    
+    ErrorLog   ${APACHE_LOG_DIR}/error.log
+    CustomLog  ${APACHE_LOG_DIR}/access.log combined
+
+    RewriteEngine On
+    RewriteCond %{HTTP_HOST} ^www.example.com$ [NC]
+    RewriteRule ^(.*)$ https://example.com$1 [R=301,L]
+
+    # Получить реальный IP от прокси сервера
+    RemoteIPHeader X-Real-IP
+    RemoteIPHeader X-Client-IP
+    RemoteIPHeader X-Forwarded-For
+    RemoteIPInternalProxy XX.XX.XX.XX
+
+    # GET LATEST LIST FROM CLOUDFLARE
+    # https://www.cloudflare.com/ips/
+
+    RemoteIPHeader CF-Connecting-IP
+
+    RemoteIPTrustedProxy 103.21.244.0/22
+    RemoteIPTrustedProxy 103.22.200.0/22
+    RemoteIPTrustedProxy 103.31.4.0/22
+    RemoteIPTrustedProxy 104.16.0.0/13
+    RemoteIPTrustedProxy 104.24.0.0/14
+    RemoteIPTrustedProxy 108.162.192.0/18
+    RemoteIPTrustedProxy 131.0.72.0/22
+    RemoteIPTrustedProxy 141.101.64.0/18
+    RemoteIPTrustedProxy 162.158.0.0/15
+    RemoteIPTrustedProxy 172.64.0.0/13
+    RemoteIPTrustedProxy 173.245.48.0/20
+    RemoteIPTrustedProxy 188.114.96.0/20
+    RemoteIPTrustedProxy 190.93.240.0/20
+    RemoteIPTrustedProxy 197.234.240.0/22
+    RemoteIPTrustedProxy 198.41.128.0/17
+    RemoteIPTrustedProxy 2400:cb00::/32
+    RemoteIPTrustedProxy 2606:4700::/32
+    RemoteIPTrustedProxy 2803:f800::/32
+    RemoteIPTrustedProxy 2405:b500::/32
+    RemoteIPTrustedProxy 2405:8100::/32
+    RemoteIPTrustedProxy 2a06:98c0::/29
+    RemoteIPTrustedProxy 2c0f:f248::/32
+
+
+    SSLEngine on
+    SSLCertificateFile     /etc/apache2/certificate/apache2.crt
+    SSLCertificateKeyFile  /etc/apache2/certificate/apache2.key
+
+
+</VirtualHost>
+---------------------------------------------------------------------
+---------------------------------------------------------------------
+
+* Теперь вы можете использовать a2ensite для активации нового виртуального хоста
+--- $ sudo a2ensite example.com
+
+* Включите мод получения реальных ip
+--- $ sudo a2enmod remoteip
+
+
+* Проверим конфигурацию Apache
+-- $ sudo apache2ctl configtest
+
+* Перезапустим Apache
+-- $ sudo systemctl reload apache2
+
+---------------------------------------------------------------------
+--- Настройка директории WordPress ----------------------------------
+---------------------------------------------------------------------
+Для начала мы укажем принадлежность всех файлов пользователю и группе www-data. Именно этот пользователь используется веб-сервером Apache, а Apache будет выполнять чтение и запись файлов WordPress для обслуживания веб-сайта и выполнения автоматических обновлений.
+
+Обновите принадлежность с помощью команды chown, которая позволяет изменять принадлежность файла. Обязательно укажите соответствующую директорию вашего сервера.
+
+--- $ sudo chown -R www-data:www-data /var/www/example.com/public
+
+Далее мы запустим команды find для установки разрешений для директорий и файлов WordPress:
+
+--- $ sudo find /var/www/example.com/public/ -type d -exec chmod 750 {} \;
+--- $ sudo find /var/www/example.com/public/ -type f -exec chmod 640 {} \;
+
+Эти разрешения должны обеспечить эффективную работу с WordPress. Но обратите внимание, что некоторые плагины и процедуры могут потребовать дополнительных изменений.
+
+---------------------------------------------------------------------
+---------------------------------------------------------------------
+
+Настроем наш PHP
+--- $ sudo nano /etc/php/7.4/apache2/php.ini
+
+max_execution_time = 3000    # Время выполнения скрипта (в секундах)
+max_input_time = 3000        # Максимальное время которое может потратить скрипт для обработки данных
+memory_limit = 4500M         # Объём памяти для одного скрипта (в МБ)
+max_input_vars = 1000        # Максимальное количество переменных в GET и POST
+post_max_size = 100M         # Максимальный размер данных, который передаётся в POST-запросе
+upload_max_filesize = 512M   # Максимальный размер загружаемого файла
+
+* Перезапустим Apache
+-- $ sudo systemctl reload apache2
+
+
+---------------------------------------------------------------
+--- Создание базы данных MySQL и пользователя для WordPress ---
+---------------------------------------------------------------
+* Входим в MySQL
+--- $ mysql -u root -p
+
+* Создаем новую базу данных для WordPress
+--- $ mysql> CREATE DATABASE wordpress DEFAULT CHARACTER SET utf8 COLLATE utf8_unicode_ci;
+
+* Создадим отдельную учетную запись пользователя MySQ.
+--- $ mysql> CREATE USER 'wordpressuser'@'%' IDENTIFIED WITH mysql_native_password BY 'password';
+
+* Сообщите базе данных о том, что наш wordpressuser должен иметь полный доступ к созданной базе.
+--- $ mysql> GRANT ALL ON wordpress.* TO 'wordpressuser'@'%';
+
+* Теперь у вас есть база данных и учетная запись пользователя, которые созданы специально для WordPress. Нам нужно обновить привилегии, чтобы текущий экземпляр MySQL узнал о последних внесенных нами изменениях.
+--- $ mysql> FLUSH PRIVILEGES;
+
+* Выходим 
+--- $ mysql> EXIT
+
+
+---------------------------------------------------------------------
+---------------------------------------------------------------------
+
+Загрузим дамп сайта
+
+* Открываем новое окно терминала !!!
+
+* Передать файл
+-- $ scp -P ПОРТ SSH  [путь источник] [имя пользователя]@[имя сервера/ip-адрес]:[путь получатель]
+-- $ scp -P XXXX "D:\directory\file.txt" user@XX.XX.XX.XX:/var/www/example.com/tmp
+
+* Импортировать файл базы данных
+--- $ sudo mysql -u database_username -p database_name < file.sql
+
+* Извлечь файлы в указанную папку перед работой нужно выполнить инсталляцию соответствующих пакетов
+--- $ sudo apt-get install zip unzip -y
+
+* Извлечение данных из архива ZIP
+--- $ sudo unzip {имя или путь до архива} -d {путь до файла или каталога}
+
+* Измените пользователя и пароль базы данных wp-config.php
+--- $ sudo nano /var/www/example.com/wp-config.php
+
+-------------------------------------------------------------
+* Получение сертификата SSL
+--- $ sudo certbot --apache
+
+* После завершения записи сертификатов автоматически добавиться в конфиг файл сайта
+--- $ sudo cd /etc/apache2/sites-available
+

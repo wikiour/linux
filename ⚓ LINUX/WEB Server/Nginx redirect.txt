@@ -1,0 +1,15 @@
+server {
+    listen 443;
+    server_name www.example.com;
+
+        location / {
+    return 301 https://example.com$request_uri;
+        }
+}
+
+
+server {
+        listen 443;
+        server_name XX.XX.XX.XX.XX;
+        return 301 https://example.com$request_uri;
+}
